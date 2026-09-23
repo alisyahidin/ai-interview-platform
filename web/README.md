@@ -2,15 +2,13 @@
 
 ## Prerequisites
 
-- **Node.js** (v18+ recommended)
-- **npm** (comes with Node)
-- A running backend API server (default: `http://localhost:3000`)
+Run the root-level bootstrap first (see the [repo README](../README.md#running-it-locally)): `mise install` gets you the pinned Node + pnpm. You'll also need the API running — see [`api/README.md`](../api/README.md); it serves on `http://localhost:3001`.
 
 ## Quick Start
 
 ```bash
 # 1. Install dependencies
-npm install
+pnpm install
 
 # 2. Set up environment variables
 cp .env.example .env
@@ -35,18 +33,24 @@ VITE_DEV_TENANT_NAME=Demo Tenant
 
 ```bash
 # 3. Start the dev server
-npm run dev
+pnpm dev
 ```
 
 The app will be available at **http://localhost:5173**.
 
 ## Available Scripts
 
-| Command             | Description                          |
-| ------------------- | ------------------------------------ |
-| `npm run dev`       | Start Vite dev server with HMR       |
-| `npm run build`     | Type-check with `tsc` then build     |
-| `npm run preview`   | Preview the production build locally |
+| Command             | Description                                    |
+| ------------------- | ----------------------------------------------- |
+| `pnpm dev`          | Start Vite dev server with HMR                   |
+| `pnpm build`        | Type-check with `tsc` then build                 |
+| `pnpm preview`      | Preview the production build locally             |
+| `pnpm test`         | Run the Vitest suite once (CI mode)              |
+| `pnpm test:watch`   | Run Vitest in watch mode                         |
+| `pnpm lint`         | ESLint over `src/`                               |
+| `pnpm typecheck`    | `tsc --noEmit`                                   |
+
+Tests run against MSW-mocked responses — no real backend needed. Some of those mocks are generated from the api spec suite (`web/src/mocks/fixtures/generated/`, committed to git) so the two suites can't silently drift apart; see `docs/adr/0002-generated-contract-fixtures.md`.
 
 ## Environment Variables
 

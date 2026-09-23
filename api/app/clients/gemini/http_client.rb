@@ -2,6 +2,11 @@
 
 module Gemini
   class HttpClient
+    # Stable generateContent REST endpoint. Deliberately not v1beta: LiveClient
+    # uses v1beta because bidi streaming has no stable release yet — this
+    # client uses the stable surface wherever Google offers one. If a model
+    # is only available under v1beta, override via GEMINI_FLASH_MODEL/
+    # GEMINI_PRO_MODEL rather than changing this constant.
     BASE_URL = 'https://generativelanguage.googleapis.com/v1'
 
     class ApiError < StandardError

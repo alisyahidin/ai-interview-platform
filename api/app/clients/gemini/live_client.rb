@@ -7,6 +7,10 @@ require 'base64'
 module Gemini
   # Manages a persistent WebSocket connection to Gemini Live API.
   class LiveClient
+    # Bidi streaming (Live API) is only published under v1beta upstream — there
+    # is no stable release to move to. This is a real Google API constraint,
+    # not stale config; see HttpClient::BASE_URL for the stable REST surface
+    # used elsewhere.
     GEMINI_WS_URL = 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent'
 
     INACTIVITY_TIMEOUT = 30 # reconnect if Gemini produces no meaningful response
@@ -89,7 +93,7 @@ module Gemini
     end
 
     # Injects hidden context via realtimeInput.text — same channel as audio, no interleaving conflicts.
-    def inject_context(text, turn_complete: true) # turn_complete kept for interface compat, ignored
+    def inject_context(text, turn_complete: true) # rubocop:disable Lint/UnusedMethodArgument -- kept for interface compat, ignored
       return false unless @connected && @ws
 
       @ws.send({ realtimeInput: { text: text } }.to_json)
@@ -166,9 +170,7 @@ module Gemini
 
       return unless (@audio_chunks_forwarded % 50).zero?
 
-      Rails.logger.debug(
-        "[Gemini::LiveClient] Audio forwarded: #{@audio_chunks_forwarded} chunks (#{@audio_bytes_forwarded}B total)"
-      )
+      Rails.logger.debug { "[Gemini::LiveClient] Audio forwarded: #{@audio_chunks_forwarded} chunks (#{@audio_bytes_forwarded}B total)" }
     end
 
     def audio_message(pcm_bytes)
@@ -446,9 +448,9 @@ module Gemini
       resumption = data['sessionResumption'] || data['sessionResumptionUpdate']
       return unless resumption
 
-      Rails.logger.debug("[Gemini::LiveClient] Resumption data: #{resumption.to_json}")
+      Rails.logger.debug { "[Gemini::LiveClient] Resumption data: #{resumption.to_json}" }
       handle = resumption['newHandle'] || resumption['handle'] || resumption['token']
-      return unless handle.present?
+      return if handle.blank?
 
       @resumption_token = handle
       @on_resumption_token_update&.call(handle)
@@ -472,14 +474,14 @@ module Gemini
     end
 
     def flush_input_buffer
-      return unless @input_text_buffer.present?
+      return if @input_text_buffer.blank?
 
       @on_input_transcription&.call(@input_text_buffer.strip)
       @input_text_buffer = +''
     end
 
     def flush_output_buffer
-      return unless @output_text_buffer.present?
+      return if @output_text_buffer.blank?
 
       @on_output_transcription&.call(@output_text_buffer.strip)
       @output_text_buffer = +''
