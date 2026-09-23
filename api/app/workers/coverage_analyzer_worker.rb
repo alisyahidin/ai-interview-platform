@@ -91,7 +91,7 @@ class CoverageAnalyzerWorker
   def advance_stale_partials(session, exclude_ids: [])
     scope = session.coverage_maps
                    .where(state: 'partial')
-                   .where('probe_count >= ?', 4)
+                   .where(probe_count: 4..)
     scope = scope.where.not(id: exclude_ids) if exclude_ids.any?
 
     scope.each do |map|

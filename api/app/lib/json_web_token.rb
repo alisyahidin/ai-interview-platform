@@ -16,14 +16,14 @@ class JsonWebToken
 
   def self.decode(token, options = {})
     body = JWT.decode(token, hmac_secret, true, options.merge(algorithms: ['HS256']))[0]
-    HashWithIndifferentAccess.new(body)
+    ActiveSupport::HashWithIndifferentAccess.new(body)
   rescue JWT::DecodeError => e
     raise ExceptionHandler::InvalidToken, e.message
   end
 
   def self.decode_without_verification(token)
     body = JWT.decode(token, nil, false)[0]
-    HashWithIndifferentAccess.new(body)
+    ActiveSupport::HashWithIndifferentAccess.new(body)
   rescue JWT::DecodeError => e
     raise ExceptionHandler::InvalidToken, e.message
   end
