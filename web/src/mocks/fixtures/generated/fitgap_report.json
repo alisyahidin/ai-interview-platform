@@ -1,0 +1,32 @@
+{
+  "data": {
+    "report": {
+      "id": 1,
+      "portfolio_id": 1,
+      "vacancy_id": 1,
+      "skill_comparisons": [
+        {
+          "skill_label": "Ruby on Rails",
+          "skill_id": "ruby-on-rails",
+          "candidate_level": 3,
+          "expected_level": 4,
+          "result": "gap",
+          "delta": -1,
+          "confidence": "medium"
+        },
+        {
+          "skill_label": "System Design",
+          "skill_id": "system-design",
+          "candidate_level": null,
+          "expected_level": 3,
+          "result": "not_assessed",
+          "delta": null,
+          "confidence": null
+        }
+      ],
+      "culture_narrative": "Sample culture narrative.",
+      "overall_narrative": "Sample overall narrative.",
+      "generated_at": "2026-01-01T00:00:00.000Z"
+    }
+  }
+}

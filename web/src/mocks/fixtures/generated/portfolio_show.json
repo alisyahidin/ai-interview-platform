@@ -1,0 +1,39 @@
+{
+  "data": {
+    "portfolio": {
+      "id": 1,
+      "session_id": 1,
+      "candidate_id": 1,
+      "generation_status": "complete",
+      "generated_at": "2026-01-01T00:00:00.000Z",
+      "generation_error": null,
+      "skills": [
+        {
+          "id": 1,
+          "skill_id": "ruby-on-rails",
+          "skill_label": "Ruby on Rails",
+          "is_discovered": false,
+          "ai_level": 3,
+          "ai_confidence": "medium",
+          "evidence": [
+            "Discussed background job design under load."
+          ],
+          "competency_summary": "Solid working knowledge, some gaps under scale."
+        },
+        {
+          "id": 1,
+          "skill_id": "communication",
+          "skill_label": "Communication",
+          "is_discovered": true,
+          "ai_level": 4,
+          "ai_confidence": "high",
+          "evidence": [
+            "Discussed background job design under load."
+          ],
+          "competency_summary": "Solid working knowledge, some gaps under scale."
+        }
+      ],
+      "overrides": []
+    }
+  }
+}
