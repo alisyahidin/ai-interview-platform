@@ -63,7 +63,7 @@ class CoverageWebSocketMiddleware
     end
 
     ws.on :close do |_event|
-      Rails.logger.debug("[CoverageWS] Assessor disconnected from session #{session_id}")
+      Rails.logger.debug { "[CoverageWS] Assessor disconnected from session #{session_id}" }
       # H4 fix: unsubscribe so the blocking Thread exits cleanly instead of
       # hanging forever waiting for the next message.
       Thread.new { redis_sub&.unsubscribe rescue nil }
@@ -101,7 +101,7 @@ class CoverageWebSocketMiddleware
           EM.schedule do
             ws.send(message)
           rescue => e
-            Rails.logger.debug("[CoverageWS] Failed to forward update: #{e.message}")
+            Rails.logger.debug { "[CoverageWS] Failed to forward update: #{e.message}" }
             redis.unsubscribe(channel)
           end
         end
@@ -117,7 +117,7 @@ class CoverageWebSocketMiddleware
 
   def authenticate_assessor(env, session_id)
     auth_header = env['HTTP_AUTHORIZATION']
-    return [nil, 'Missing authorization'] unless auth_header.present?
+    return [nil, 'Missing authorization'] if auth_header.blank?
 
     authenticate_assessor_by_token(auth_header.split(' ').last, session_id)
   end
