@@ -198,6 +198,167 @@ RSpec.describe Portfolios::Generator do
     end
   end
 
+  describe "#call — override preservation across regeneration (#9)" do
+    # Regenerates `portfolio` from `batch` and returns the fresh copy of
+    # `skill_id`/`skill_label`'s portfolio_skill row. A plain helper method
+    # (not `let`) so it doesn't count against the memoized-helper budget,
+    # matching this file's existing `valid_batch`/`invalid_batch` pattern.
+    def regenerate_and_find(portfolio, batch, skill_id: nil, skill_label: nil)
+      described_class.new(session: portfolio.session, gemini_client: gemini_double(batch)).call
+      scope = portfolio.reload.portfolio_skills
+      skill_id ? scope.find_by!(skill_id: skill_id) : scope.find_by!(skill_label: skill_label)
+    end
+
+    # AC46: overrides preserved and re-attached by `skill_id` across a
+    # regeneration.
+    context "when a configured skill's override matches the new batch by skill_id" do
+      def first_batch
+        { "configured_skills" => [skill_payload(skill_id: "sk-1", label: "Skill A", level: 2)], "discovered_skills" => [] }
+      end
+
+      def second_batch
+        { "configured_skills" => [skill_payload(skill_id: "sk-1", label: "Skill A", level: 4)], "discovered_skills" => [] }
+      end
+
+      let!(:portfolio) { described_class.new(session: session, gemini_client: gemini_double(first_batch)).call }
+      let!(:old_skill) { portfolio.portfolio_skills.find_by!(skill_id: "sk-1") }
+      let!(:override) do
+        create(:assessor_override, portfolio_skill: old_skill, ai_level: 2, override_level: 5,
+                                    assessor_notes: "Stronger than the AI score.", overridden_by: 42)
+      end
+      let(:new_skill) { regenerate_and_find(portfolio, second_batch, skill_id: "sk-1") }
+
+      it "re-attaches the override to the new portfolio_skill record, not the old one" do
+        aggregate_failures do
+          expect(new_skill.assessor_override.portfolio_skill_id).to eq(new_skill.id)
+          expect(new_skill.id).not_to eq(old_skill.id)
+          expect(PortfolioSkill.find_by(id: old_skill.id)).to be_nil
+        end
+      end
+
+      it "preserves the human judgment fields from the original override" do
+        expect(new_skill.assessor_override).to have_attributes(
+          override_level: override.override_level, assessor_notes: override.assessor_notes,
+          overridden_by: override.overridden_by, overridden_at: override.overridden_at
+        )
+      end
+
+      it "refreshes ai_level to the new skill's own (re-measured) level" do
+        aggregate_failures do
+          expect(new_skill.ai_level).to eq(4)
+          expect(new_skill.assessor_override.ai_level).to eq(4)
+        end
+      end
+    end
+
+    # Discovered-skill override (no `skill_id`) re-attaches by `skill_label`.
+    context "when a discovered skill's override matches the new batch by skill_label" do
+      def first_batch
+        { "configured_skills" => [], "discovered_skills" => [skill_payload(skill_id: nil, label: "Custom Skill", level: 2)] }
+      end
+
+      def second_batch
+        { "configured_skills" => [], "discovered_skills" => [skill_payload(skill_id: nil, label: "Custom Skill", level: 5)] }
+      end
+
+      let!(:portfolio) { described_class.new(session: session, gemini_client: gemini_double(first_batch)).call }
+      let!(:old_skill) { portfolio.portfolio_skills.find_by!(skill_label: "Custom Skill") }
+      let!(:override) do
+        create(:assessor_override, portfolio_skill: old_skill, ai_level: 2, override_level: 3, overridden_by: 7)
+      end
+      let(:new_skill) { regenerate_and_find(portfolio, second_batch, skill_label: "Custom Skill") }
+
+      it "re-attaches the override to the new discovered-skill record by label" do
+        aggregate_failures do
+          expect(new_skill.skill_id).to be_nil
+          expect(new_skill.assessor_override).to have_attributes(portfolio_skill_id: new_skill.id, override_level: override.override_level, ai_level: 5)
+        end
+      end
+    end
+
+    # An override whose skill is absent from the new batch is neither
+    # deleted nor silently reapplied -- it's preserved in an unlinked state.
+    context "when the override's matching skill is absent from the new batch" do
+      def first_batch
+        {
+          "configured_skills" => [
+            skill_payload(skill_id: "sk-removed", label: "Removed Skill", level: 3),
+            skill_payload(skill_id: "sk-stays", label: "Staying Skill", level: 3)
+          ],
+          "discovered_skills" => []
+        }
+      end
+
+      def second_batch
+        { "configured_skills" => [skill_payload(skill_id: "sk-stays", label: "Staying Skill", level: 4)], "discovered_skills" => [] }
+      end
+
+      let!(:portfolio) { described_class.new(session: session, gemini_client: gemini_double(first_batch)).call }
+      let!(:removed_skill) { portfolio.portfolio_skills.find_by!(skill_id: "sk-removed") }
+      let!(:override) do
+        create(:assessor_override, portfolio_skill: removed_skill, ai_level: 3, override_level: 1, overridden_by: 9)
+      end
+
+      before { described_class.new(session: session, gemini_client: gemini_double(second_batch)).call }
+
+      it "regenerates without raising and completes the portfolio" do
+        expect(portfolio.reload.generation_status).to eq("complete")
+      end
+
+      it "preserves the override row, still pointed at the old superseded skill" do
+        aggregate_failures do
+          expect(AssessorOverride.find_by(id: override.id)).to be_present
+          expect(override.reload.portfolio_skill_id).to eq(removed_skill.id)
+          expect(PortfolioSkill.find_by(id: removed_skill.id)).to be_present
+        end
+      end
+
+      it "does not attach the preserved override to the unrelated skill that did carry over" do
+        staying_skill = portfolio.reload.portfolio_skills.find_by!(skill_id: "sk-stays")
+        expect(staying_skill.assessor_override).to be_nil
+      end
+    end
+
+    # Same skill_id reappears, but the model no longer measures it
+    # (`ai_level` nil). There is no valid `ai_level` to reattach the
+    # override against, so it's preserved unlinked rather than raising a
+    # validation error or attaching with a fabricated level.
+    context "when the matching skill regenerates as not_assessed (nil ai_level)" do
+      def first_batch
+        { "configured_skills" => [skill_payload(skill_id: "sk-1", label: "Skill A", level: 3)], "discovered_skills" => [] }
+      end
+
+      def second_batch
+        { "configured_skills" => [skill_payload(skill_id: "sk-1", label: "Skill A", level: "N/A")], "discovered_skills" => [] }
+      end
+
+      let!(:portfolio) { described_class.new(session: session, gemini_client: gemini_double(first_batch)).call }
+      let!(:old_skill) { portfolio.portfolio_skills.find_by!(skill_id: "sk-1") }
+      let!(:override) do
+        create(:assessor_override, portfolio_skill: old_skill, ai_level: 3, override_level: 5, overridden_by: 3)
+      end
+      # Preserved orphan (level 3) + this generation's not_assessed row.
+      let(:new_skill) { portfolio.reload.portfolio_skills.where(skill_id: "sk-1").find { |s| s.id != old_skill.id } }
+
+      before { described_class.new(session: session, gemini_client: gemini_double(second_batch)).call }
+
+      it "creates a fresh not_assessed row without attaching the override to it" do
+        aggregate_failures do
+          expect(portfolio.portfolio_skills.where(skill_id: "sk-1").count).to eq(2)
+          expect(new_skill.ai_level).to be_nil
+          expect(new_skill.assessor_override).to be_nil
+        end
+      end
+
+      it "preserves the override, still pointed at the old skill record" do
+        aggregate_failures do
+          expect(AssessorOverride.find_by(id: override.id)).to be_present
+          expect(override.reload.portfolio_skill_id).to eq(old_skill.id)
+        end
+      end
+    end
+  end
+
   describe "#call — failure classification" do
     context "when the Gemini client times out" do
       let(:generator) { described_class.new(session: session, gemini_client: raising_gemini_double(Gemini::HttpClient::TimeoutError, "timed out")) }

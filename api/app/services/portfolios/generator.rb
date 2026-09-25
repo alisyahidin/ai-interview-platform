@@ -205,9 +205,43 @@ module Portfolios
     # (e.g. an unexpected validation error) can never leave a partial
     # portfolio visible.
     #
-    # NB: override preservation across regeneration (F7) is a separate,
-    # blocked-by-this ticket -- it hooks in right here, between
-    # `destroy_all` and creating the new skills, once it lands.
+    # #9: override preservation across regeneration (F7).
+    #
+    # `AssessorOverride` is a strict 1:1 on `portfolio_skill_id` (unique,
+    # NOT NULL FK) -- it has no independent "which skill is this really
+    # about" identity of its own. Before anything is destroyed, every
+    # existing override for this portfolio is snapshotted and keyed by its
+    # *skill's* identity (`skill_id` for configured skills, `skill_label`
+    # for discovered ones, whose `skill_id` is always nil -- accepting the
+    # documented rare-collision risk of two same-labeled discovered skills
+    # sharing a key, same as #7/#8's treatment of that edge case).
+    #
+    # A snapshot entry is "reattachable" when the new batch has an entry
+    # with the same key *and* that entry actually carries a numeric
+    # `ai_level` (a plain `:assessed`/`:needs_review` outcome). A skill that
+    # regenerates as `:not_assessed` (nil `ai_level`) can't host a reattached
+    # override -- `AssessorOverride#ai_level` is a NOT NULL, 1..5-validated
+    # column representing what the AI actually scored, and there is no
+    # honest value to put there for "the model didn't measure this
+    # this time." That case is treated the same as "no longer in the batch."
+    #
+    # Design choice for "preserved but unlinked" (schema-consistent, no new
+    # migration -- `assessor_overrides.portfolio_skill_id` stays NOT NULL):
+    # the OLD `portfolio_skill` row backing a non-reattachable override is
+    # simply *not* destroyed. `destroy_all` only runs against the skills
+    # that don't need to stay around for this reason, so the override's FK
+    # never dangles and the override row itself is never touched -- it goes
+    # on pointing at the real (now-superseded) skill record it always did,
+    # fully intact and fully queryable via `override.portfolio_skill`,
+    # instead of being deleted or silently reassigned to an unrelated skill.
+    # The tradeoff, deliberately accepted: that superseded row keeps
+    # showing up in `portfolio.portfolio_skills` (it's real history, not a
+    # tombstone) even though it's no longer part of the latest generation's
+    # skill set -- callers that want "only this generation's skills" can
+    # already tell the two apart by checking `assessor_override.present?`
+    # combined with whether the skill's key reappears elsewhere in the
+    # association; a dedicated "current batch" marker would need a real
+    # migration and is out of scope here.
     def save_skills(portfolio, response, prompt)
       data = parse_model_response(response)
 
@@ -220,12 +254,76 @@ module Portfolios
       end
 
       ActiveRecord::Base.transaction do
-        portfolio.portfolio_skills.destroy_all
+        override_snapshot = snapshot_overrides(portfolio)
+        orphaned_skill_ids = orphaned_skill_ids_for(override_snapshot, entries)
 
-        entries.each { |entry| portfolio.portfolio_skills.create!(entry[:attributes]) }
+        portfolio.portfolio_skills.where.not(id: orphaned_skill_ids).destroy_all
+
+        entries.each do |entry|
+          new_skill = portfolio.portfolio_skills.create!(entry[:attributes])
+          reattach_override(override_snapshot, entry, new_skill)
+        end
 
         portfolio.update!(model_name: @model_name, prompt_version: Digest::SHA256.hexdigest(prompt))
       end
+    end
+
+    # Keyed snapshot of every override currently attached to this
+    # portfolio's skills, taken before anything is destroyed. Must run
+    # first: once `destroy_all` fires, `has_one :assessor_override,
+    # dependent: :destroy` on `PortfolioSkill` would take any non-preserved
+    # override down with its skill.
+    def snapshot_overrides(portfolio)
+      portfolio.portfolio_skills.includes(:assessor_override).each_with_object({}) do |skill, memo|
+        override = skill.assessor_override
+        next unless override
+
+        memo[override_key(skill.skill_id, skill.skill_label)] = override
+      end
+    end
+
+    # The old portfolio_skill ids that must survive `destroy_all` because
+    # their override has nowhere reattachable to go this generation.
+    def orphaned_skill_ids_for(override_snapshot, entries)
+      reattachable_keys = entries.filter_map do |entry|
+        attrs = entry[:attributes]
+        override_key(attrs[:skill_id], attrs[:skill_label]) if attrs[:ai_level].present?
+      end
+
+      override_snapshot.filter_map do |key, override|
+        override.portfolio_skill_id unless reattachable_keys.include?(key)
+      end
+    end
+
+    # Re-creates a preserved override against the freshly-created skill row
+    # that matches its key, carrying forward everything about the human
+    # judgment (`override_level`, `assessor_notes`, `overridden_by`,
+    # `overridden_at`) while refreshing `ai_level` to the new skill's own
+    # (freshly re-measured) level. A no-op when there's no snapshot entry
+    # for this key, or when the new skill has no `ai_level` to reattach
+    # against (see the design note above `#save_skills`).
+    def reattach_override(override_snapshot, entry, new_skill)
+      return if new_skill.ai_level.nil?
+
+      attrs = entry[:attributes]
+      old_override = override_snapshot[override_key(attrs[:skill_id], attrs[:skill_label])]
+      return unless old_override
+
+      AssessorOverride.create!(
+        portfolio_skill_id: new_skill.id,
+        ai_level:           new_skill.ai_level,
+        override_level:     old_override.override_level,
+        assessor_notes:     old_override.assessor_notes,
+        overridden_by:      old_override.overridden_by,
+        overridden_at:      old_override.overridden_at
+      )
+    end
+
+    # Configured skills are keyed by their stable `skill_id`; discovered
+    # skills (whose `skill_id` is always nil) fall back to `skill_label` --
+    # the only identity they have, per #9's accepted collision risk.
+    def override_key(skill_id, skill_label)
+      skill_id.presence || "label:#{skill_label}"
     end
 
     def parse_model_response(response)
