@@ -135,13 +135,33 @@ export interface VacancySkill {
 
 export type SkillComparisonResult = "match" | "gap" | "exceed" | "not_assessed";
 
+// Mirrors `portfolio_skills.assessment_status` (PR2) as surfaced per fit/gap
+// row by #22. `needs_review` behaves like `not_assessed` for comparison
+// purposes today (see `FitGap::Engine#assessed?`) but is kept as its own
+// value rather than collapsed, so the frontend never has to guess which case
+// produced a given row.
+export type AssessmentStatus = "assessed" | "not_assessed" | "needs_review";
+
+export type ConfidenceLevel = "high" | "medium" | "low";
+
 export interface SkillComparison {
   skill_label: string;
-  required_level: number;
-  candidate_level?: number;
+  skill_id?: string;
+  // The vacancy's required level for this skill. Was mis-typed/mis-read as
+  // `required_level` — a key the backend has never sent (F8) — renamed to
+  // match the actual `FitGap::Engine#build_skill_comparisons` response.
+  expected_level: number;
+  candidate_level?: number | null;
   result: SkillComparisonResult;
-  delta?: number;
+  delta?: number | null;
+  confidence?: ConfidenceLevel | null;
+  // Added by #22: whether an assessor override is applied on top of the AI
+  // level, the AI's pre-override level, and the underlying skill's real
+  // assessment status. All optional here because a backend that hasn't
+  // shipped #22 yet simply omits them.
   is_override?: boolean;
+  original_level?: number | null;
+  assessment_status?: AssessmentStatus;
 }
 
 export interface FitGapReport {

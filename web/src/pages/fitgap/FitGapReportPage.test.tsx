@@ -1,10 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { axe } from "vitest-axe";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { http, HttpResponse } from "msw";
 import { server } from "@/mocks/server";
 import FitGapReportPage from "./FitGapReportPage";
+import type { SkillComparison } from "@/types";
 
 // This file proves FitGapReportPage is wired to the shared `usePolling` hook's
 // stalled state (ticket #15) — it does not re-derive the hook's own backoff
@@ -87,5 +89,198 @@ describe("FitGapReportPage polling wiring", () => {
 
     await userEvent.click(retryButton);
     expect(retryMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Ticket #24 (Phase 3b #3): the comparison table used to read `required_level`
+// — a key the backend has never sent (F8) — so the "Required" column was
+// permanently blank and the override marker never fired. #22 adds
+// `is_override`/`original_level`/`assessment_status` to each row; these
+// tests exercise the fixed table against realistic payloads carrying those
+// fields, via this page's existing MSW seam.
+describe("FitGapReportPage skill comparison table", () => {
+  const baseComparisons: SkillComparison[] = [
+    {
+      skill_label: "Ruby on Rails",
+      skill_id: "ruby-on-rails",
+      candidate_level: 3,
+      expected_level: 4,
+      result: "gap",
+      delta: -1,
+      confidence: "high",
+      assessment_status: "assessed",
+    },
+    {
+      skill_label: "System Design",
+      skill_id: "system-design",
+      candidate_level: 2,
+      expected_level: 2,
+      result: "match",
+      delta: 0,
+      confidence: "medium",
+      is_override: true,
+      original_level: 4,
+      assessment_status: "assessed",
+    },
+    {
+      skill_label: "Kubernetes",
+      skill_id: "kubernetes",
+      candidate_level: null,
+      expected_level: 3,
+      result: "not_assessed",
+      delta: null,
+      confidence: null,
+      assessment_status: "not_assessed",
+    },
+    {
+      skill_label: "Communication",
+      skill_id: "communication",
+      candidate_level: 1,
+      expected_level: 3,
+      result: "gap",
+      delta: -2,
+      confidence: "low",
+      assessment_status: "assessed",
+    },
+  ];
+
+  function mockReportReady(report: {
+    skill_comparisons: SkillComparison[];
+    culture_narrative: string | null;
+    overall_narrative: string;
+  }) {
+    server.use(
+      http.get(`${API_BASE}/sessions/1/portfolio`, () =>
+        HttpResponse.json({
+          data: {
+            portfolio: {
+              id: 1,
+              session_id: 1,
+              generation_status: "complete",
+              skills: [],
+              overrides: [],
+            },
+          },
+        })
+      ),
+      // Report already exists — no generation/polling involved.
+      http.get(`${API_BASE}/portfolios/1/fitgap/1`, () =>
+        HttpResponse.json({
+          data: {
+            report: {
+              id: 1,
+              portfolio_id: 1,
+              vacancy_id: 1,
+              generated_at: "2026-01-01T00:00:00.000Z",
+              ...report,
+            },
+          },
+        })
+      )
+    );
+  }
+
+  beforeEach(() => {
+    retryMock.mockClear();
+    pollingResult = { isStalled: false, retry: retryMock, failureCount: 0, intervalMs: 5000 };
+    mockReportReady({
+      skill_comparisons: baseComparisons,
+      culture_narrative: "Sample culture narrative.",
+      overall_narrative: "Sample overall narrative.",
+    });
+  });
+
+  it("reads the level the backend actually sends (expected_level), fixing F8's blank Required column", async () => {
+    renderPage();
+
+    const railsRow = (await screen.findByText("Ruby on Rails")).closest("tr");
+    expect(railsRow).not.toBeNull();
+    // Required column must show the vacancy's expected level (L4), not be
+    // blank — this is the direct regression test for the `required_level` /
+    // `expected_level` key mismatch.
+    expect(railsRow!).toHaveTextContent("L4");
+  });
+
+  it("shows an override marker that reveals the AI's original level via a keyboard-accessible tooltip", async () => {
+    renderPage();
+    await screen.findByText("System Design");
+
+    const overrideButton = screen.getByRole("button", {
+      name: /overridden by assessor.*original level/i,
+    });
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+
+    // Focus alone (no click) must reveal it — keyboard operability, not just
+    // mouse/click.
+    fireEvent.focus(overrideButton);
+    const tooltip = await screen.findByRole("tooltip");
+    expect(tooltip).toHaveTextContent(/original level:\s*L4/i);
+
+    // Escape closes it again without losing keyboard control.
+    fireEvent.keyDown(overrideButton, { key: "Escape" });
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+
+    // Click toggles it open too, for mouse/touch users.
+    await userEvent.click(overrideButton);
+    expect(await screen.findByRole("tooltip")).toBeInTheDocument();
+  });
+
+  it("labels a not-assessed row clearly and excludes it from the gap count", async () => {
+    renderPage();
+    await screen.findByText("Kubernetes");
+
+    const kubernetesRow = screen.getByText("Kubernetes").closest("tr");
+    expect(kubernetesRow!).toHaveTextContent(/not assessed/i);
+
+    // Named, not just tallied, in the table's own summary.
+    expect(screen.getByText(/not assessed: 1 skill \(kubernetes\)/i)).toBeInTheDocument();
+
+    // Only the high-confidence Ruby on Rails gap counts as a firm gap — the
+    // low-confidence Communication row must not inflate it.
+    expect(screen.getByText(/^⚠ gap: 1 skill$/i)).toBeInTheDocument();
+  });
+
+  it("marks a low-confidence row tentative and keeps it out of the firm gap tally", async () => {
+    renderPage();
+    await screen.findByText("Communication");
+
+    const communicationRow = screen.getByText("Communication").closest("tr");
+    expect(communicationRow!).toHaveTextContent(/tentative/i);
+
+    expect(screen.getByText(/tentative: 1 skill/i)).toBeInTheDocument();
+    // Firm gap tally stays at 1 (Ruby on Rails only).
+    expect(screen.getByText(/^⚠ gap: 1 skill$/i)).toBeInTheDocument();
+  });
+
+  it("renders the fallback narrative's honest counts verbatim when the model call failed", async () => {
+    // The narrative string itself (including counting not-assessed skills
+    // honestly) is generated server-side in FitGap::Engine — out of scope
+    // for this frontend ticket to construct. This proves the page displays
+    // whatever fallback text the backend sends without dropping or altering
+    // the not-assessed mention, which is the frontend-observable slice of
+    // AC12/F33.
+    mockReportReady({
+      skill_comparisons: baseComparisons,
+      culture_narrative: null,
+      overall_narrative:
+        "Candidate shows 1 skill match, 0 exceeds, 2 gaps, and 1 not assessed (Kubernetes) against role requirements.",
+    });
+
+    renderPage();
+
+    expect(
+      await screen.findByText(/1 skill match, 0 exceeds, 2 gaps, and 1 not assessed \(kubernetes\)/i)
+    ).toBeInTheDocument();
+  });
+
+  it("has zero serious or critical accessibility violations", async () => {
+    const { container } = renderPage();
+    await screen.findByText("Ruby on Rails");
+
+    const results = await axe(container);
+    const seriousOrCritical = results.violations.filter(
+      (v) => v.impact === "serious" || v.impact === "critical"
+    );
+    expect(seriousOrCritical).toEqual([]);
   });
 });

@@ -5,12 +5,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import ComparisonTable from "@/components/fitgap/ComparisonTable";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { TruncatedText } from "@/components/ui/truncated-text";
 import { portfoliosApi } from "@/services/portfolios";
 import { sessionsApi } from "@/services/sessions";
+import { vacanciesApi } from "@/services/vacancies";
 import { usePolling } from "@/hooks/usePolling";
 import PollingStalledBanner from "@/components/resource/PollingStalledBanner";
 import { ArrowLeft, Download, Loader2, RefreshCw, Zap } from "lucide-react";
-import type { FitGapReport, Portfolio } from "@/types";
+import type { FitGapReport, Portfolio, Vacancy } from "@/types";
 
 export default function FitGapReportPage() {
   const { id, sessionId, vacancyId } = useParams<{
@@ -21,6 +24,7 @@ export default function FitGapReportPage() {
 
   const [report, setReport] = useState<FitGapReport | null>(null);
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
+  const [vacancy, setVacancy] = useState<Vacancy | null>(null);
   const [generating, setGenerating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState<"pdf" | "json" | null>(null);
@@ -66,6 +70,17 @@ export default function FitGapReportPage() {
   useEffect(() => {
     if (portfolio) fetchReport().catch(() => {});
   }, [portfolio, fetchReport]);
+
+  // The vacancy's role title identifies which report this is for (AC39). It
+  // is display-only here, so a failure to load it just leaves the title
+  // blank rather than breaking the page.
+  useEffect(() => {
+    if (!vacancyId) return;
+    vacanciesApi
+      .get(Number(vacancyId))
+      .then((res) => setVacancy(res.data.vacancy))
+      .catch(() => {});
+  }, [vacancyId]);
 
   const { isStalled: pollingStalled, retry: retryPolling } = usePolling(
     fetchReport,
@@ -118,16 +133,24 @@ export default function FitGapReportPage() {
     <div className="max-w-2xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-start justify-between">
-        <div className="space-y-1">
+        <div className="min-w-0 space-y-1">
           <div className="flex items-center gap-2">
             <Link
               to={`/assessments/${id}/sessions/${sessionId}/portfolio`}
               className="text-muted-foreground hover:text-foreground"
+              aria-label="Back to portfolio"
             >
               <ArrowLeft className="h-4 w-4" />
             </Link>
             <h1 className="text-lg font-semibold">Fit/Gap Report</h1>
           </div>
+          {vacancy && (
+            <TooltipProvider delayDuration={200}>
+              <p className="max-w-xs pl-6 text-xs text-muted-foreground">
+                <TruncatedText text={vacancy.role_title} />
+              </p>
+            </TooltipProvider>
+          )}
         </div>
 
         {portfolio && (
