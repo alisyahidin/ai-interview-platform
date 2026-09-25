@@ -8,6 +8,7 @@ import ComparisonTable from "@/components/fitgap/ComparisonTable";
 import { portfoliosApi } from "@/services/portfolios";
 import { sessionsApi } from "@/services/sessions";
 import { usePolling } from "@/hooks/usePolling";
+import PollingStalledBanner from "@/components/resource/PollingStalledBanner";
 import { ArrowLeft, Download, Loader2, RefreshCw, Zap } from "lucide-react";
 import type { FitGapReport, Portfolio } from "@/types";
 
@@ -36,10 +37,17 @@ export default function FitGapReportPage() {
         try {
           await portfoliosApi.triggerFitGap(portfolio.id, Number(vacancyId));
           setGenerating(true);
-        } catch {
+        } catch (triggerError) {
           setGenerating(false);
+          // A failure to even trigger generation is a real failure — surface
+          // it to the polling hook so it counts toward the backoff/stall.
+          throw triggerError;
         }
+        return;
       }
+      // Anything other than "no report yet" is a genuine failure (network
+      // error, 5xx, etc.) — surface it so the polling hook backs off.
+      throw e;
     }
   }, [portfolio, vacancyId]);
 
@@ -56,10 +64,14 @@ export default function FitGapReportPage() {
   }, [sessionId]);
 
   useEffect(() => {
-    if (portfolio) fetchReport();
+    if (portfolio) fetchReport().catch(() => {});
   }, [portfolio, fetchReport]);
 
-  usePolling(fetchReport, 5000, generating && !!portfolio);
+  const { isStalled: pollingStalled, retry: retryPolling } = usePolling(
+    fetchReport,
+    5000,
+    generating && !!portfolio
+  );
 
   const handleRegenerate = async () => {
     if (!portfolio) return;
@@ -141,12 +153,15 @@ export default function FitGapReportPage() {
       </div>
 
       {/* Generating */}
-      {generating && (
+      {generating && !pollingStalled && (
         <div className="border rounded-lg p-12 text-center space-y-3">
           <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
           <p className="text-sm text-muted-foreground">Generating fit/gap report...</p>
         </div>
       )}
+
+      {/* Polling stalled — repeated failures while waiting for the report */}
+      {pollingStalled && <PollingStalledBanner onRetry={retryPolling} />}
 
       {/* Report ready */}
       {report && (

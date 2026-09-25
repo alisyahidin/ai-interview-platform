@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import AssessorLayout from "@/components/layout/AssessorLayout";
 import CandidateLayout from "@/components/layout/CandidateLayout";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import CatchAllRoute from "@/components/CatchAllRoute";
 import LoginPage from "@/pages/auth/LoginPage";
 import AssessmentListPage from "@/pages/assessments/AssessmentListPage";
 import AssessmentNewPage from "@/pages/assessments/AssessmentNewPage";
@@ -56,6 +57,14 @@ export default function App() {
       <Route element={<CandidateLayout />}>
         <Route path="/interview/:token" element={<InterviewPage />} />
       </Route>
+
+      {/* Catch-all: any URL that doesn't match a defined route above renders
+          a real 404, never a blank page. The surrounding shell depends on
+          auth state — authenticated sees it inside AssessorLayout (normal
+          nav chrome); unauthenticated never sees that chrome for an
+          unmatched URL, and gets the minimal CandidateLayout shell instead.
+          See CatchAllRoute. */}
+      <Route path="*" element={<CatchAllRoute />} />
     </Routes>
   );
 }

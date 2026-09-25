@@ -1,26 +1,67 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import Resource from "@/components/resource/Resource";
+import SessionWrongState from "@/components/resource/SessionWrongState";
+import { useResource } from "@/hooks/useResource";
 import { sessionsApi } from "@/services/sessions";
+import { sessionHasNoContentYet } from "@/utils/session";
 import { ArrowLeft, Download } from "lucide-react";
-import type { TranscriptTurn } from "@/types";
+import type { TranscriptTurn, Session } from "@/types";
+
+interface SessionResponse {
+  session: Session;
+  assessment: { id: number; name: string; time_limit_min: number };
+}
 
 export default function TranscriptPage() {
   const { id, sessionId } = useParams<{ id: string; sessionId: string }>();
+
+  const fetchSession = useCallback(() => sessionsApi.get(Number(sessionId)), [sessionId]);
+  const { resource } = useResource<SessionResponse>(fetchSession);
+
+  return (
+    <Resource
+      resource={resource}
+      isValidState={(data) => !sessionHasNoContentYet(data.session)}
+      wrongState={(data) => (
+        <SessionWrongState
+          session={data.session}
+          contentLabel="transcript"
+          backTo={`/assessments/${id}/invite`}
+        />
+      )}
+    >
+      {(data) => (
+        <TranscriptPageContent
+          id={id!}
+          sessionId={sessionId!}
+          candidateName={data.session.candidate_name ?? null}
+        />
+      )}
+    </Resource>
+  );
+}
+
+function TranscriptPageContent({
+  id,
+  sessionId,
+  candidateName,
+}: {
+  id: string;
+  sessionId: string;
+  candidateName: string | null;
+}) {
   const [turns, setTurns] = useState<TranscriptTurn[]>([]);
-  const [candidateName, setCandidateName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    Promise.all([
-      sessionsApi.getTranscript(Number(sessionId)),
-      sessionsApi.get(Number(sessionId)),
-    ])
-      .then(([tRes, sRes]) => {
+    sessionsApi
+      .getTranscript(Number(sessionId))
+      .then((tRes) => {
         setTurns(tRes.data.turns);
-        setCandidateName(sRes.data.session.candidate_name ?? null);
       })
       .catch(() => setError(true))
       .finally(() => setLoading(false));

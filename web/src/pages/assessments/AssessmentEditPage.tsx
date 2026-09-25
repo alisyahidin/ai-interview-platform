@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import {
@@ -23,6 +23,9 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import SkillCard from "@/components/assessment/SkillCard";
 import SkillPicker from "@/components/assessment/SkillPicker";
+import Resource from "@/components/resource/Resource";
+import NotFoundState from "@/components/resource/NotFoundState";
+import { useResource } from "@/hooks/useResource";
 import { ArrowLeft, Plus, Loader2 } from "lucide-react";
 import { assessmentsApi } from "@/services/assessments";
 import { TIME_LIMIT_OPTIONS } from "@/utils/constants";
@@ -32,7 +35,6 @@ import type { AssessmentFormValues } from "./AssessmentNewPage";
 export default function AssessmentEditPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,16 +46,14 @@ export default function AssessmentEditPage() {
   const { register, handleSubmit, control, setValue, reset, formState: { errors } } = form;
   const { fields, append, remove, move } = useFieldArray({ control, name: "skills" });
 
+  const fetchAssessment = useCallback(() => assessmentsApi.get(Number(id)), [id]);
+  const { resource } = useResource(fetchAssessment);
+
   useEffect(() => {
-    assessmentsApi
-      .get(Number(id))
-      .then((res) => {
-        const a = res.data.assessment;
-        reset({ name: a.name, time_limit_min: a.time_limit_min, skills: a.skills });
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [id, reset]);
+    if (resource.status !== "ready") return;
+    const a = resource.data.assessment;
+    reset({ name: a.name, time_limit_min: a.time_limit_min, skills: a.skills });
+  }, [resource, reset]);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -87,91 +87,104 @@ export default function AssessmentEditPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="max-w-2xl mx-auto space-y-4">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-10 w-full" />
-        <Skeleton className="h-10 w-40" />
-        <Skeleton className="h-24 w-full" />
-      </div>
-    );
-  }
-
   return (
     <div className="max-w-2xl mx-auto">
-      <div className="flex items-center gap-2 mb-6">
-        <Link to="/assessments" className="text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
-        <span className="text-sm text-muted-foreground">Back</span>
-        <span className="text-sm text-muted-foreground">/</span>
-        <span className="text-sm font-medium">Edit Assessment</span>
-      </div>
-
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-        <div className="space-y-1.5">
-          <Label htmlFor="name">Role title <span className="text-destructive">*</span></Label>
-          <Input id="name" {...register("name", { required: true })} />
-        </div>
-
-        <div className="space-y-1.5">
-          <Label>Session time limit <span className="text-destructive">*</span></Label>
-          <Select
-            value={String(form.watch("time_limit_min"))}
-            onValueChange={(v) => setValue("time_limit_min", Number(v))}
-          >
-            <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {TIME_LIMIT_OPTIONS.map((min) => (
-                <SelectItem key={min} value={String(min)}>{min} min</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <Separator />
-
-        <div className="space-y-3">
-          <Label>Skills to assess</Label>
-          {fields.length === 0 ? (
-            <div className="border rounded-lg p-6 text-center text-sm text-muted-foreground">
-              No skills added yet.
-            </div>
-          ) : (
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-              <SortableContext items={fields.map((f) => f.id)} strategy={verticalListSortingStrategy}>
-                <div className="space-y-2">
-                  {fields.map((field, index) => (
-                    <SkillCard key={field.id} id={field.id} index={index} form={form} onRemove={() => remove(index)} />
-                  ))}
-                </div>
-              </SortableContext>
-            </DndContext>
-          )}
-          <div className="flex gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={() => setPickerOpen(true)}>
-              <Plus className="h-3.5 w-3.5 mr-1" /> Add from B7 taxonomy
-            </Button>
-            <Button type="button" variant="outline" size="sm" onClick={() => append({ skill_label: "", is_custom: true, expected_level: 3, display_order: fields.length })}>
-              <Plus className="h-3.5 w-3.5 mr-1" /> Add custom skill
-            </Button>
+      <Resource
+        resource={resource}
+        loading={
+          <div className="space-y-4">
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-40" />
+            <Skeleton className="h-24 w-full" />
           </div>
-        </div>
+        }
+        notFound={
+          <NotFoundState
+            title="Assessment not found"
+            description="This assessment no longer exists."
+            backTo="/assessments"
+            backLabel="Back to assessments"
+          />
+        }
+      >
+        {() => (
+          <>
+            <div className="flex items-center gap-2 mb-6">
+              <Link to="/assessments" className="text-muted-foreground hover:text-foreground">
+                <ArrowLeft className="h-4 w-4" />
+              </Link>
+              <span className="text-sm text-muted-foreground">Back</span>
+              <span className="text-sm text-muted-foreground">/</span>
+              <span className="text-sm font-medium">Edit Assessment</span>
+            </div>
 
-        <Separator />
-        {error && <p className="text-sm text-destructive">{error}</p>}
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+              <div className="space-y-1.5">
+                <Label htmlFor="name">Role title <span className="text-destructive">*</span></Label>
+                <Input id="name" {...register("name", { required: true })} />
+              </div>
 
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={() => navigate(`/assessments/${id}/invite`)}>Cancel</Button>
-          <Button type="submit" disabled={submitting}>
-            {submitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Save Changes
-          </Button>
-        </div>
-      </form>
+              <div className="space-y-1.5">
+                <Label>Session time limit <span className="text-destructive">*</span></Label>
+                <Select
+                  value={String(form.watch("time_limit_min"))}
+                  onValueChange={(v) => setValue("time_limit_min", Number(v))}
+                >
+                  <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {TIME_LIMIT_OPTIONS.map((min) => (
+                      <SelectItem key={min} value={String(min)}>{min} min</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-      <SkillPicker open={pickerOpen} onOpenChange={setPickerOpen} onSelect={(s) => append({ ...s, display_order: fields.length })} />
+              <Separator />
+
+              <div className="space-y-3">
+                <Label>Skills to assess</Label>
+                {fields.length === 0 ? (
+                  <div className="border rounded-lg p-6 text-center text-sm text-muted-foreground">
+                    No skills added yet.
+                  </div>
+                ) : (
+                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                    <SortableContext items={fields.map((f) => f.id)} strategy={verticalListSortingStrategy}>
+                      <div className="space-y-2">
+                        {fields.map((field, index) => (
+                          <SkillCard key={field.id} id={field.id} index={index} form={form} onRemove={() => remove(index)} />
+                        ))}
+                      </div>
+                    </SortableContext>
+                  </DndContext>
+                )}
+                <div className="flex gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={() => setPickerOpen(true)}>
+                    <Plus className="h-3.5 w-3.5 mr-1" /> Add from B7 taxonomy
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => append({ skill_label: "", is_custom: true, expected_level: 3, display_order: fields.length })}>
+                    <Plus className="h-3.5 w-3.5 mr-1" /> Add custom skill
+                  </Button>
+                </div>
+              </div>
+
+              <Separator />
+              {error && <p className="text-sm text-destructive">{error}</p>}
+
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => navigate(`/assessments/${id}/invite`)}>Cancel</Button>
+                <Button type="submit" disabled={submitting}>
+                  {submitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  Save Changes
+                </Button>
+              </div>
+            </form>
+
+            <SkillPicker open={pickerOpen} onOpenChange={setPickerOpen} onSelect={(s) => append({ ...s, display_order: fields.length })} />
+          </>
+        )}
+      </Resource>
     </div>
   );
 }

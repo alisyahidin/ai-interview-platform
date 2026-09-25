@@ -5,15 +5,61 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import SkillPortfolioCard from "@/components/portfolio/SkillPortfolioCard";
+import Resource from "@/components/resource/Resource";
+import SessionWrongState from "@/components/resource/SessionWrongState";
+import PollingStalledBanner from "@/components/resource/PollingStalledBanner";
+import { useResource } from "@/hooks/useResource";
 import { sessionsApi } from "@/services/sessions";
 import { vacanciesApi } from "@/services/vacancies";
 import { portfoliosApi } from "@/services/portfolios";
 import { usePolling } from "@/hooks/usePolling";
+import { sessionHasNoContentYet } from "@/utils/session";
 import { ArrowLeft, Download, Loader2, RefreshCw, Zap, FileText } from "lucide-react";
-import type { Portfolio, AssessorOverride, Vacancy } from "@/types";
+import type { Portfolio, AssessorOverride, Vacancy, Session } from "@/types";
+
+interface SessionResponse {
+  session: Session;
+  assessment: { id: number; name: string; time_limit_min: number };
+}
 
 export default function PortfolioPage() {
   const { id, sessionId } = useParams<{ id: string; sessionId: string }>();
+
+  const fetchSession = useCallback(() => sessionsApi.get(Number(sessionId)), [sessionId]);
+  const { resource } = useResource<SessionResponse>(fetchSession);
+
+  return (
+    <Resource
+      resource={resource}
+      isValidState={(data) => !sessionHasNoContentYet(data.session)}
+      wrongState={(data) => (
+        <SessionWrongState
+          session={data.session}
+          contentLabel="portfolio"
+          backTo={`/assessments/${id}/invite`}
+        />
+      )}
+    >
+      {(data) => (
+        <PortfolioPageContent
+          id={id!}
+          sessionId={sessionId!}
+          candidateName={data.session.candidate_name ?? null}
+        />
+      )}
+    </Resource>
+  );
+}
+
+function PortfolioPageContent({
+  id,
+  sessionId,
+  candidateName,
+}: {
+  id: string;
+  sessionId: string;
+  candidateName: string | null;
+}) {
   const navigate = useNavigate();
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [generating, setGenerating] = useState(false);
@@ -22,7 +68,6 @@ export default function PortfolioPage() {
   const [vacancies, setVacancies] = useState<Vacancy[]>([]);
   const [selectedVacancy, setSelectedVacancy] = useState<string>("");
   const [exporting, setExporting] = useState<"pdf" | "json" | null>(null);
-  const [candidateName, setCandidateName] = useState<string | null>(null);
 
   const fetchPortfolio = useCallback(async () => {
     const res = await sessionsApi.getPortfolio(Number(sessionId));
@@ -42,17 +87,16 @@ export default function PortfolioPage() {
   }, [sessionId]);
 
   useEffect(() => {
-    Promise.all([fetchPortfolio(), vacanciesApi.list(), sessionsApi.get(Number(sessionId))])
-      .then(([, vRes, sRes]) => {
+    Promise.all([fetchPortfolio(), vacanciesApi.list()])
+      .then(([, vRes]) => {
         setVacancies(vRes.data.vacancies);
-        setCandidateName(sRes.data.session.candidate_name ?? null);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [fetchPortfolio, sessionId]);
+  }, [fetchPortfolio]);
 
-  // Poll while generating
-  usePolling(fetchPortfolio, 5000, generating);
+  // Poll while generating, backing off on repeated failures (ticket #15).
+  const { isStalled: pollingStalled, retry: retryPolling } = usePolling(fetchPortfolio, 5000, generating);
 
   const handleOverrideSaved = (skillId: number, override: AssessorOverride) => {
     setOverrides((prev) => ({ ...prev, [skillId]: override }));
@@ -154,7 +198,7 @@ export default function PortfolioPage() {
       </div>
 
       {/* Generating state */}
-      {generating && (
+      {generating && !pollingStalled && (
         <div className="border rounded-lg p-12 text-center space-y-3">
           <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
           <div>
@@ -165,6 +209,9 @@ export default function PortfolioPage() {
           </div>
         </div>
       )}
+
+      {/* Polling stalled — repeated failures while waiting for the portfolio */}
+      {pollingStalled && <PollingStalledBanner onRetry={retryPolling} />}
 
       {/* Failed state */}
       {!generating && portfolio?.generation_status === "failed" && (

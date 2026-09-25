@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Outlet, Link, useNavigate } from "react-router-dom";
 import { useAtomValue, useSetAtom } from "jotai";
 import { tenantAtom } from "@/stores/tenantAtom";
@@ -6,13 +7,21 @@ import { Button } from "@/components/ui/button";
 import { LayoutDashboard, ClipboardList, Briefcase, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLocation } from "react-router-dom";
+import RouteErrorBoundary from "@/components/RouteErrorBoundary";
 
 const navItems = [
   { href: "/assessments", label: "Assessments", icon: ClipboardList },
   { href: "/vacancies", label: "Vacancies", icon: Briefcase },
 ];
 
-export default function AssessorLayout() {
+interface AssessorLayoutProps {
+  /** Explicit content to render instead of the routed <Outlet/> — used when
+   * this shell is reused outside normal route nesting (e.g. the
+   * authenticated catch-all 404). Defaults to <Outlet/> for normal routing. */
+  children?: ReactNode;
+}
+
+export default function AssessorLayout({ children }: AssessorLayoutProps) {
   const tenant = useAtomValue(tenantAtom);
   const setAuth = useSetAtom(authAtom);
   const navigate = useNavigate();
@@ -68,7 +77,9 @@ export default function AssessorLayout() {
 
       {/* Page content */}
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-6">
-        <Outlet />
+        <RouteErrorBoundary key={location.pathname}>
+          {children ?? <Outlet />}
+        </RouteErrorBoundary>
       </main>
     </div>
   );
