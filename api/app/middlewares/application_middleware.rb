@@ -6,9 +6,7 @@ class ApplicationMiddleware
     @app = app
   end
 
-  def call(env)
-    @app.call(env)
-  end
+  delegate :call, to: :@app
 
   private
 

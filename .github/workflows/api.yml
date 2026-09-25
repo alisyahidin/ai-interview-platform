@@ -1,0 +1,84 @@
+name: api
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "api/**"
+      - "web/src/mocks/fixtures/generated/**"
+      - "mise.toml"
+      - ".github/workflows/api.yml"
+  pull_request:
+    paths:
+      - "api/**"
+      - "web/src/mocks/fixtures/generated/**"
+      - "mise.toml"
+      - ".github/workflows/api.yml"
+
+defaults:
+  run:
+    working-directory: api
+
+env:
+  RAILS_ENV: test
+  DB_HOST: localhost
+  DB_PORT: 5432
+  DB_USERNAME: postgres
+  DB_PASSWORD: postgres
+  DB_NAME: rakamin_test
+  REDIS_URL: redis://localhost:6379/1
+  # Q11 (Phase 1 grilling): blank/dummy values — proves the suite never
+  # depends on a real secret. Real Gemini calls are blocked by WebMock;
+  # specs inject a fake gemini_client instead.
+  SECRET_KEY_BASE: dummy-test-secret-key-base
+  GEMINI_API_KEY: dummy-test-key
+  APP_BASE_URL: http://localhost:5173
+  ALLOWED_ORIGINS: "*"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3.2"
+          bundler-cache: true
+          working-directory: api
+
+      - run: bundle exec rails db:create db:schema:load
+
+      - run: bundle exec rspec
+
+      - run: bundle exec rubocop
+
+      - name: Contract fixtures are up to date
+        run: |
+          bundle exec rake contracts:export
+          git add -A -- ../web/src/mocks/fixtures/generated
+          git diff --cached --exit-code -- ../web/src/mocks/fixtures/generated || {
+            echo "::error::Generated MSW fixtures are stale or missing. Run 'RAILS_ENV=test bundle exec rake contracts:export' in api/ and commit the result."
+            exit 1
+          }

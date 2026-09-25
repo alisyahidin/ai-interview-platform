@@ -18,6 +18,18 @@ module Api
         json_error("Assessment not found", :not_found)
       end
 
+      # GET /api/v1/sessions/:id
+      def show
+        json_response(
+          session: session_json(@session).merge(
+            assessment: {
+              id:             @session.assessment.id,
+              name:           @session.assessment.name,
+              time_limit_min: @session.assessment.time_limit_min
+            }
+          )
+        )
+      end
       # POST /api/v1/assessments/:assessment_id/sessions
       def create
         assessment = Assessment.find(params[:assessment_id])
@@ -43,18 +55,6 @@ module Api
         json_error("Assessment not found", :not_found)
       end
 
-      # GET /api/v1/sessions/:id
-      def show
-        json_response(
-          session: session_json(@session).merge(
-            assessment: {
-              id:             @session.assessment.id,
-              name:           @session.assessment.name,
-              time_limit_min: @session.assessment.time_limit_min
-            }
-          )
-        )
-      end
 
       # POST /api/v1/sessions/:id/end
       def end_session
@@ -94,7 +94,7 @@ module Api
         from_turn = params[:from_turn].to_i
         turns     = @session.transcript_turns
                              .ordered
-                             .then { from_turn > 0 ? _1.where("turn_number >= ?", from_turn) : _1 }
+                             .then { from_turn > 0 ? _1.where(turn_number: from_turn..) : _1 }
 
         json_response(
           turns: turns.map do |t|
