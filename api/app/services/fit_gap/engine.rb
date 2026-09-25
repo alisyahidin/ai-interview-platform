@@ -61,14 +61,26 @@ module FitGap
           confidence      = nil
         end
 
+        # #22: thread the override state effective_portfolio_skills already
+        # computed through to the row instead of discarding it. `is_override`
+        # and `assessment_status` are reported regardless of whether a usable
+        # level was found; `original_level` (the pre-override ai_level) is
+        # only meaningful -- and only present -- when an override exists.
+        is_override       = portfolio_skill ? portfolio_skill[:overridden] : false
+        original_level    = is_override ? portfolio_skill[:ai_level] : nil
+        assessment_status = portfolio_skill ? portfolio_skill[:assessment_status] : 'not_assessed'
+
         {
-          skill_label:     label,
-          skill_id:        vacancy_skill.skill_id,
-          candidate_level: candidate_level,
-          expected_level:  expected_level,
-          result:          result,
-          delta:           delta,
-          confidence:      confidence
+          skill_label:       label,
+          skill_id:          vacancy_skill.skill_id,
+          candidate_level:   candidate_level,
+          expected_level:    expected_level,
+          result:            result,
+          delta:             delta,
+          confidence:        confidence,
+          is_override:       is_override,
+          original_level:    original_level,
+          assessment_status: assessment_status
         }
       end
 
