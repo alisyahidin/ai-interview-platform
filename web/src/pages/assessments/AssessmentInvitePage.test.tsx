@@ -82,7 +82,7 @@ describe("AssessmentInvitePage polling wiring", () => {
     renderPage();
 
     await waitFor(() => expect(screen.getByText("Backend Engineer")).toBeInTheDocument());
-    expect(screen.getByText(/live status updates paused/i)).toBeInTheDocument();
+    expect(screen.getByText(/stopped retrying automatically/i)).toBeInTheDocument();
 
     const retryButton = screen.getByRole("button", { name: /retry now/i });
     await userEvent.click(retryButton);

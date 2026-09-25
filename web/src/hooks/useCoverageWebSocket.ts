@@ -40,13 +40,6 @@ interface UseCoverageWebSocketResult {
    * connection is already open).
    */
   reconnect: () => void;
-  /**
-   * @deprecated Derived convenience boolean (`connectionState === "connected"`)
-   * kept only so the current LiveMonitorPage consumer keeps compiling.
-   * Prefer `connectionState`; LiveMonitorPage's own migration is tracked
-   * separately.
-   */
-  isConnected: boolean;
 }
 
 export function useCoverageWebSocket(sessionId: number): UseCoverageWebSocketResult {
@@ -154,6 +147,5 @@ export function useCoverageWebSocket(sessionId: number): UseCoverageWebSocketRes
     connectionState,
     lastUpdatedAt,
     reconnect,
-    isConnected: connectionState === "connected",
   };
 }

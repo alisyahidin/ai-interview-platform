@@ -8,6 +8,7 @@ import ComparisonTable from "@/components/fitgap/ComparisonTable";
 import { portfoliosApi } from "@/services/portfolios";
 import { sessionsApi } from "@/services/sessions";
 import { usePolling } from "@/hooks/usePolling";
+import PollingStalledBanner from "@/components/resource/PollingStalledBanner";
 import { ArrowLeft, Download, Loader2, RefreshCw, Zap } from "lucide-react";
 import type { FitGapReport, Portfolio } from "@/types";
 
@@ -160,16 +161,7 @@ export default function FitGapReportPage() {
       )}
 
       {/* Polling stalled — repeated failures while waiting for the report */}
-      {pollingStalled && (
-        <div className="border border-amber-400/40 rounded-lg p-6 text-center space-y-3">
-          <p className="text-sm text-amber-700">
-            Having trouble checking on the report. We've stopped retrying automatically.
-          </p>
-          <Button variant="outline" size="sm" onClick={retryPolling}>
-            <RefreshCw className="h-3.5 w-3.5 mr-1.5" /> Retry now
-          </Button>
-        </div>
-      )}
+      {pollingStalled && <PollingStalledBanner onRetry={retryPolling} />}
 
       {/* Report ready */}
       {report && (

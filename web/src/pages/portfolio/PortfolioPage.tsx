@@ -6,7 +6,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import SkillPortfolioCard from "@/components/portfolio/SkillPortfolioCard";
 import Resource from "@/components/resource/Resource";
-import WrongStateState from "@/components/resource/WrongStateState";
+import SessionWrongState from "@/components/resource/SessionWrongState";
+import PollingStalledBanner from "@/components/resource/PollingStalledBanner";
 import { useResource } from "@/hooks/useResource";
 import { sessionsApi } from "@/services/sessions";
 import { vacanciesApi } from "@/services/vacancies";
@@ -21,21 +22,6 @@ interface SessionResponse {
   assessment: { id: number; name: string; time_limit_min: number };
 }
 
-/** Copy for the guarded "wrong-state" explanation (AC16) — why there's no portfolio yet. */
-function wrongStateCopy(session: Session): { title: string; description: string } {
-  if (session.status === "pending") {
-    return {
-      title: "Interview hasn't started yet",
-      description:
-        "This candidate hasn't started their interview, so there's no portfolio to show yet. Check back once they've completed it.",
-    };
-  }
-  return {
-    title: "Interview didn't complete",
-    description: "This session ended before an interview was completed, so no portfolio was generated.",
-  };
-}
-
 export default function PortfolioPage() {
   const { id, sessionId } = useParams<{ id: string; sessionId: string }>();
 
@@ -46,19 +32,13 @@ export default function PortfolioPage() {
     <Resource
       resource={resource}
       isValidState={(data) => !sessionHasNoContentYet(data.session)}
-      wrongState={(data) => {
-        const copy = wrongStateCopy(data.session);
-        return (
-          <div className="max-w-2xl mx-auto">
-            <WrongStateState
-              title={copy.title}
-              description={copy.description}
-              backTo={`/assessments/${id}/invite`}
-              backLabel="Back to sessions"
-            />
-          </div>
-        );
-      }}
+      wrongState={(data) => (
+        <SessionWrongState
+          session={data.session}
+          contentLabel="portfolio"
+          backTo={`/assessments/${id}/invite`}
+        />
+      )}
     >
       {(data) => (
         <PortfolioPageContent
@@ -231,16 +211,7 @@ function PortfolioPageContent({
       )}
 
       {/* Polling stalled — repeated failures while waiting for the portfolio */}
-      {pollingStalled && (
-        <div className="border border-amber-400/40 rounded-lg p-6 text-center space-y-3">
-          <p className="text-sm text-amber-700">
-            Having trouble checking on the portfolio. We've stopped retrying automatically.
-          </p>
-          <Button variant="outline" size="sm" onClick={retryPolling}>
-            <RefreshCw className="h-3.5 w-3.5 mr-1.5" /> Retry now
-          </Button>
-        </div>
-      )}
+      {pollingStalled && <PollingStalledBanner onRetry={retryPolling} />}
 
       {/* Failed state */}
       {!generating && portfolio?.generation_status === "failed" && (
