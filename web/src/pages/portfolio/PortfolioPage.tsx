@@ -5,15 +5,81 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import SkillPortfolioCard from "@/components/portfolio/SkillPortfolioCard";
+import Resource from "@/components/resource/Resource";
+import WrongStateState from "@/components/resource/WrongStateState";
+import { useResource } from "@/hooks/useResource";
 import { sessionsApi } from "@/services/sessions";
 import { vacanciesApi } from "@/services/vacancies";
 import { portfoliosApi } from "@/services/portfolios";
 import { usePolling } from "@/hooks/usePolling";
+import { sessionHasNoContentYet } from "@/utils/session";
 import { ArrowLeft, Download, Loader2, RefreshCw, Zap, FileText } from "lucide-react";
-import type { Portfolio, AssessorOverride, Vacancy } from "@/types";
+import type { Portfolio, AssessorOverride, Vacancy, Session } from "@/types";
+
+interface SessionResponse {
+  session: Session;
+  assessment: { id: number; name: string; time_limit_min: number };
+}
+
+/** Copy for the guarded "wrong-state" explanation (AC16) — why there's no portfolio yet. */
+function wrongStateCopy(session: Session): { title: string; description: string } {
+  if (session.status === "pending") {
+    return {
+      title: "Interview hasn't started yet",
+      description:
+        "This candidate hasn't started their interview, so there's no portfolio to show yet. Check back once they've completed it.",
+    };
+  }
+  return {
+    title: "Interview didn't complete",
+    description: "This session ended before an interview was completed, so no portfolio was generated.",
+  };
+}
 
 export default function PortfolioPage() {
   const { id, sessionId } = useParams<{ id: string; sessionId: string }>();
+
+  const fetchSession = useCallback(() => sessionsApi.get(Number(sessionId)), [sessionId]);
+  const { resource } = useResource<SessionResponse>(fetchSession);
+
+  return (
+    <Resource
+      resource={resource}
+      isValidState={(data) => !sessionHasNoContentYet(data.session)}
+      wrongState={(data) => {
+        const copy = wrongStateCopy(data.session);
+        return (
+          <div className="max-w-2xl mx-auto">
+            <WrongStateState
+              title={copy.title}
+              description={copy.description}
+              backTo={`/assessments/${id}/invite`}
+              backLabel="Back to sessions"
+            />
+          </div>
+        );
+      }}
+    >
+      {(data) => (
+        <PortfolioPageContent
+          id={id!}
+          sessionId={sessionId!}
+          candidateName={data.session.candidate_name ?? null}
+        />
+      )}
+    </Resource>
+  );
+}
+
+function PortfolioPageContent({
+  id,
+  sessionId,
+  candidateName,
+}: {
+  id: string;
+  sessionId: string;
+  candidateName: string | null;
+}) {
   const navigate = useNavigate();
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [generating, setGenerating] = useState(false);
@@ -22,7 +88,6 @@ export default function PortfolioPage() {
   const [vacancies, setVacancies] = useState<Vacancy[]>([]);
   const [selectedVacancy, setSelectedVacancy] = useState<string>("");
   const [exporting, setExporting] = useState<"pdf" | "json" | null>(null);
-  const [candidateName, setCandidateName] = useState<string | null>(null);
 
   const fetchPortfolio = useCallback(async () => {
     const res = await sessionsApi.getPortfolio(Number(sessionId));
@@ -42,17 +107,16 @@ export default function PortfolioPage() {
   }, [sessionId]);
 
   useEffect(() => {
-    Promise.all([fetchPortfolio(), vacanciesApi.list(), sessionsApi.get(Number(sessionId))])
-      .then(([, vRes, sRes]) => {
+    Promise.all([fetchPortfolio(), vacanciesApi.list()])
+      .then(([, vRes]) => {
         setVacancies(vRes.data.vacancies);
-        setCandidateName(sRes.data.session.candidate_name ?? null);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [fetchPortfolio, sessionId]);
+  }, [fetchPortfolio]);
 
-  // Poll while generating
-  usePolling(fetchPortfolio, 5000, generating);
+  // Poll while generating, backing off on repeated failures (ticket #15).
+  const { isStalled: pollingStalled, retry: retryPolling } = usePolling(fetchPortfolio, 5000, generating);
 
   const handleOverrideSaved = (skillId: number, override: AssessorOverride) => {
     setOverrides((prev) => ({ ...prev, [skillId]: override }));
@@ -154,7 +218,7 @@ export default function PortfolioPage() {
       </div>
 
       {/* Generating state */}
-      {generating && (
+      {generating && !pollingStalled && (
         <div className="border rounded-lg p-12 text-center space-y-3">
           <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
           <div>
@@ -163,6 +227,18 @@ export default function PortfolioPage() {
               The AI is analyzing the interview transcript. This takes about 2 minutes.
             </p>
           </div>
+        </div>
+      )}
+
+      {/* Polling stalled — repeated failures while waiting for the portfolio */}
+      {pollingStalled && (
+        <div className="border border-amber-400/40 rounded-lg p-6 text-center space-y-3">
+          <p className="text-sm text-amber-700">
+            Having trouble checking on the portfolio. We've stopped retrying automatically.
+          </p>
+          <Button variant="outline" size="sm" onClick={retryPolling}>
+            <RefreshCw className="h-3.5 w-3.5 mr-1.5" /> Retry now
+          </Button>
         </div>
       )}
 
