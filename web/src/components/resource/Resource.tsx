@@ -24,7 +24,7 @@ export interface ResourceProps<T> {
   /** Overrides for each non-ready state's presentation. Each defaults to the shared `<...State>` component. */
   loading?: ReactNode;
   empty?: ReactNode;
-  error?: ReactNode | ((error: unknown) => ReactNode);
+  error?: ReactNode;
   notFound?: ReactNode;
   forbidden?: ReactNode;
   wrongState?: ReactNode | ((data: T) => ReactNode);
@@ -55,7 +55,7 @@ export default function Resource<T>({
     case "empty":
       return empty ?? <EmptyState />;
     case "error":
-      return typeof error === "function" ? error(resource.error) : (error ?? <ErrorState error={resource.error} />);
+      return error ?? <ErrorState error={resource.error} />;
     case "not-found":
       return notFound ?? <NotFoundState />;
     case "forbidden":

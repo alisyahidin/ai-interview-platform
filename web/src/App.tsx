@@ -50,17 +50,12 @@ export default function App() {
         <Route path="/vacancies" element={<VacancyListPage />} />
         <Route path="/vacancies/new" element={<VacancyNewPage />} />
         <Route path="/vacancies/:id/edit" element={<VacancyEditPage />} />
-      </Route>
-      </Route>
 
-      {/* Candidate route (public) */}
-      <Route element={<CandidateLayout />}>
-        <Route path="/interview/:token" element={<InterviewPage />} />
-      </Route>
-
-      {/* Catch-all: any URL that doesn't match a defined route above renders
-          a real 404 inside the app's layout (chrome + nav), not a blank page. */}
-      <Route element={<AssessorLayout />}>
+        {/* Catch-all: any URL that doesn't match a defined route above renders
+            a real 404 inside the app's layout (chrome + nav), not a blank page.
+            Nested inside ProtectedRoute like every other assessor route, so an
+            unauthenticated visitor is redirected to /login instead of seeing
+            the authenticated app chrome. */}
         <Route
           path="*"
           element={
@@ -72,6 +67,12 @@ export default function App() {
             />
           }
         />
+      </Route>
+      </Route>
+
+      {/* Candidate route (public) */}
+      <Route element={<CandidateLayout />}>
+        <Route path="/interview/:token" element={<InterviewPage />} />
       </Route>
     </Routes>
   );

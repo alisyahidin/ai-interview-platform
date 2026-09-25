@@ -3,7 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import Resource from "@/components/resource/Resource";
-import WrongStateState from "@/components/resource/WrongStateState";
+import SessionWrongState from "@/components/resource/SessionWrongState";
 import { useResource } from "@/hooks/useResource";
 import { sessionsApi } from "@/services/sessions";
 import { sessionHasNoContentYet } from "@/utils/session";
@@ -13,21 +13,6 @@ import type { TranscriptTurn, Session } from "@/types";
 interface SessionResponse {
   session: Session;
   assessment: { id: number; name: string; time_limit_min: number };
-}
-
-/** Copy for the guarded "wrong-state" explanation (AC16) — why there's no transcript yet. */
-function wrongStateCopy(session: Session): { title: string; description: string } {
-  if (session.status === "pending") {
-    return {
-      title: "Interview hasn't started yet",
-      description:
-        "This candidate hasn't started their interview, so there's no transcript to show yet. Check back once they've completed it.",
-    };
-  }
-  return {
-    title: "Interview didn't complete",
-    description: "This session ended before an interview was completed, so no transcript was recorded.",
-  };
 }
 
 export default function TranscriptPage() {
@@ -40,19 +25,13 @@ export default function TranscriptPage() {
     <Resource
       resource={resource}
       isValidState={(data) => !sessionHasNoContentYet(data.session)}
-      wrongState={(data) => {
-        const copy = wrongStateCopy(data.session);
-        return (
-          <div className="max-w-2xl mx-auto">
-            <WrongStateState
-              title={copy.title}
-              description={copy.description}
-              backTo={`/assessments/${id}/invite`}
-              backLabel="Back to sessions"
-            />
-          </div>
-        );
-      }}
+      wrongState={(data) => (
+        <SessionWrongState
+          session={data.session}
+          contentLabel="transcript"
+          backTo={`/assessments/${id}/invite`}
+        />
+      )}
     >
       {(data) => (
         <TranscriptPageContent

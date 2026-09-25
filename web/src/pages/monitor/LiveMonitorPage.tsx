@@ -19,6 +19,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import TranscriptBubble from "@/components/interview/TranscriptBubble";
 import Resource from "@/components/resource/Resource";
 import WrongStateState from "@/components/resource/WrongStateState";
+import PollingStalledBanner from "@/components/resource/PollingStalledBanner";
 import { useResource } from "@/hooks/useResource";
 import { usePolling } from "@/hooks/usePolling";
 import { useCoverageWebSocket, type CoverageConnectionState } from "@/hooks/useCoverageWebSocket";
@@ -28,7 +29,7 @@ import {
   COVERAGE_STATE_WIDTH,
   COVERAGE_STATE_COLOR,
 } from "@/utils/constants";
-import { ArrowLeft, CheckCircle, Clock, Radio, RefreshCw, Zap } from "lucide-react";
+import { ArrowLeft, CheckCircle, Clock, Radio, Zap } from "lucide-react";
 import type { Session, TranscriptTurn } from "@/types";
 
 const TRANSCRIPT_POLL_BASE_MS = 3000;
@@ -404,16 +405,7 @@ function LiveMonitorContent({
       </Card>
 
       {/* Transcript polling stalled — repeated failures fetching new turns */}
-      {pollingStalled && (
-        <div className="border border-amber-400/40 rounded-lg p-6 text-center space-y-3">
-          <p className="text-sm text-amber-700">
-            Having trouble fetching new transcript turns. We've stopped retrying automatically.
-          </p>
-          <Button variant="outline" size="sm" onClick={retryPolling}>
-            <RefreshCw className="h-3.5 w-3.5 mr-1.5" /> Retry now
-          </Button>
-        </div>
-      )}
+      {pollingStalled && <PollingStalledBanner onRetry={retryPolling} />}
 
       {endError && (
         <div className="border border-destructive/40 rounded-lg p-3 text-sm text-destructive">
