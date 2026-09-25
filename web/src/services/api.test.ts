@@ -63,4 +63,19 @@ describe("api.ts response interceptor", () => {
     expect(getStoredToken()).toBe("a-valid-token");
     expect(window.location.href).toBe(initialHref);
   });
+
+  it("does not redirect on a 401 from the login request itself — wrong credentials, not an expired session", async () => {
+    server.use(http.post(`${API_BASE}/auth/login`, () => new HttpResponse(null, { status: 401 })));
+
+    await expect(api.post("/auth/login", { email: "x@example.com", password: "wrong" })).rejects.toMatchObject({
+      response: expect.objectContaining({ status: 401 }),
+    });
+
+    // The token that existed before this failed login attempt is untouched,
+    // and no navigation was forced — LoginPage's own catch block gets to
+    // show its inline error instead of the whole page reloading out from
+    // under it.
+    expect(getStoredToken()).toBe("a-valid-token");
+    expect(window.location.href).toBe(initialHref);
+  });
 });
