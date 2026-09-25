@@ -96,8 +96,12 @@ module FitGap
     # assessed. `not_assessed` (never measured) and `needs_review` (coverage
     # said not_yet but the model scored it anyway) both carry a nil/untrusted
     # ai_level and must not be diffed against the expected level.
+    #
+    # No `.nil?` branch here: `portfolio_skills.assessment_status` is
+    # NOT NULL with a DB default of 'assessed', so a real record can never
+    # produce a nil value here.
     def assessed?(portfolio_skill)
-      portfolio_skill[:assessment_status].nil? || portfolio_skill[:assessment_status] == 'assessed'
+      portfolio_skill[:assessment_status] == 'assessed'
     end
 
     def find_portfolio_skill(portfolio_skills, label, skill_id)

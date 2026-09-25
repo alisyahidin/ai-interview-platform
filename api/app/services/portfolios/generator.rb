@@ -36,11 +36,7 @@ module Portfolios
 
     # Returns the Portfolio record with skills populated.
     def call
-      portfolio = @session.portfolio || @session.create_portfolio!(
-        candidate_id:      @session.candidate_id,
-        generation_status: 'pending',
-        tenant_id:         @session.tenant_id
-      )
+      portfolio = Portfolio.pending_for(session: @session)
 
       portfolio.update!(generation_status: 'generating')
 
@@ -83,10 +79,9 @@ module Portfolios
     end
 
     def build_prompt
-      assessment       = @session.assessment
-      configured_skills = assessment.assessment_skills.order(:display_order)
-      coverage_maps     = @session.coverage_maps.order(:id)
-      turns             = @session.transcript_turns.ordered
+      assessment    = @session.assessment
+      coverage_maps = @session.coverage_maps.order(:id)
+      turns         = @session.transcript_turns.ordered
 
       skills_text = configured_skills.map { |s| skill_definition_block(s) }.join("\n\n")
 
@@ -205,6 +200,14 @@ module Portfolios
     # (e.g. an unexpected validation error) can never leave a partial
     # portfolio visible.
     #
+    # AC42 (#7/#8): a configured skill the model drops entirely from its
+    # JSON -- not merely scored as "N/A", genuinely absent from
+    # `configured_skills` -- still gets a row, via `build_omitted_entries`
+    # below: `not_assessed` / `omitted_by_model`, matched against
+    # `configured_skills` (the same list `build_prompt` sent the model) by
+    # the same skill_id-or-label key #9 already uses for override
+    # re-attachment.
+    #
     # #9: override preservation across regeneration (F7).
     #
     # `AssessorOverride` is a strict 1:1 on `portfolio_skill_id` (unique,
@@ -245,8 +248,11 @@ module Portfolios
     def save_skills(portfolio, response, prompt)
       data = parse_model_response(response)
 
-      entries = build_skill_entries(data['configured_skills'], discovered: false) +
-                build_skill_entries(data['discovered_skills'], discovered: true)
+      configured_entries = build_skill_entries(data['configured_skills'], discovered: false)
+      discovered_entries = build_skill_entries(data['discovered_skills'], discovered: true)
+      omitted_entries    = build_omitted_entries(configured_entries)
+
+      entries = configured_entries + omitted_entries + discovered_entries
 
       if entries.any? { |entry| entry[:normalized].invalid? }
         raise InvalidModelOutputError,
@@ -344,6 +350,40 @@ module Portfolios
 
         { normalized: normalized, attributes: skill_attributes(skill_data, normalized, discovered: discovered) }
       end
+    end
+
+    # AC42: every configured skill the model's `configured_skills` JSON
+    # doesn't account for -- matched by the same skill_id-or-label key #9
+    # uses for override re-attachment, not by array position -- gets a
+    # `not_assessed` / `omitted_by_model` row instead of silently getting
+    # no row at all.
+    def build_omitted_entries(configured_entries)
+      present_keys = configured_entries.map do |entry|
+        override_key(entry[:attributes][:skill_id], entry[:attributes][:skill_label])
+      end
+
+      configured_skills
+        .reject { |skill| present_keys.include?(override_key(skill.skill_id, skill.skill_label)) }
+        .map { |skill| omitted_entry_for(skill) }
+    end
+
+    def omitted_entry_for(skill)
+      normalized = Portfolios::LevelNormalizer.call(omitted: true)
+      skill_data = {
+        'skill_id'           => skill.skill_id,
+        'skill_label'        => skill.skill_label,
+        'evidence'           => [],
+        'competency_summary' => "Not assessed: this skill was omitted from the model's response."
+      }
+
+      { normalized: normalized, attributes: skill_attributes(skill_data, normalized, discovered: false) }
+    end
+
+    # The configured skill list `build_prompt` sent the model, memoized so
+    # `save_skills`'s omitted-skill cross-reference (AC42) reuses the exact
+    # same records instead of re-querying.
+    def configured_skills
+      @configured_skills ||= @session.assessment.assessment_skills.order(:display_order)
     end
 
     def coverage_state_for(skill_label)

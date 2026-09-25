@@ -91,7 +91,7 @@ RSpec.describe Portfolios::Generator do
       let!(:previous_state) do
         {
           skill_ids:      portfolio.portfolio_skills.order(:skill_id).pluck(:id),
-          model_name:     portfolio[:model_name],
+          model_name:     portfolio.gemini_model_name,
           prompt_version: portfolio.prompt_version
         }
       end
@@ -120,7 +120,7 @@ RSpec.describe Portfolios::Generator do
       it "does not overwrite the previous provenance" do
         portfolio.reload
         aggregate_failures do
-          expect(portfolio[:model_name]).to eq(previous_state[:model_name])
+          expect(portfolio.gemini_model_name).to eq(previous_state[:model_name])
           expect(portfolio.prompt_version).to eq(previous_state[:prompt_version])
         end
       end
@@ -181,6 +181,45 @@ RSpec.describe Portfolios::Generator do
     end
   end
 
+  # AC42 (#7/#8): a skill configured on the assessment (the same list
+  # `build_prompt` sends the model) that the model's JSON drops entirely --
+  # not scored "N/A", genuinely absent from `configured_skills` -- must
+  # still end up with a row, not silently end up with none at all.
+  describe "#call — configured skill entirely omitted by the model (AC42)" do
+    before do
+      create(:assessment_skill, assessment: session.assessment, skill_id: "sk-ghost", skill_label: "Ghost Skill")
+    end
+
+    let(:batch_missing_ghost) do
+      {
+        "configured_skills" => [skill_payload(skill_id: "sk-1", label: "Clean Skill", level: 3)],
+        "discovered_skills" => []
+      }
+    end
+
+    let!(:portfolio) { described_class.new(session: session, gemini_client: gemini_double(batch_missing_ghost)).call }
+
+    it "completes generation successfully" do
+      expect(portfolio.generation_status).to eq("complete")
+    end
+
+    it "creates a row for the omitted configured skill instead of leaving it out" do
+      expect(portfolio.portfolio_skills.find_by(skill_id: "sk-ghost")).to be_present
+    end
+
+    it "marks the omitted skill not_assessed with reason omitted_by_model" do
+      expect(portfolio.portfolio_skills.find_by(skill_id: "sk-ghost")).to have_attributes(
+        assessment_status: "not_assessed", status_reason: "omitted_by_model", ai_level: nil
+      )
+    end
+
+    it "still persists the skill the model did return, unaffected" do
+      expect(portfolio.portfolio_skills.find_by(skill_id: "sk-1")).to have_attributes(
+        assessment_status: "assessed", ai_level: 3
+      )
+    end
+  end
+
   describe "#call — provenance on success (AC47)" do
     let(:batch) do
       { "configured_skills" => [skill_payload(skill_id: "sk-1", label: "Skill A", level: 3)], "discovered_skills" => [] }
@@ -189,7 +228,7 @@ RSpec.describe Portfolios::Generator do
     let!(:portfolio) { generator.call }
 
     it "records the model_name used for the generation" do
-      expect(portfolio[:model_name]).to eq(ENV.fetch("GEMINI_PRO_MODEL", "gemini-2.5-flash"))
+      expect(portfolio.gemini_model_name).to eq(ENV.fetch("GEMINI_PRO_MODEL", "gemini-2.5-flash"))
     end
 
     it "records prompt_version as the sha256 digest of the assembled prompt" do
