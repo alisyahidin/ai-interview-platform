@@ -205,3 +205,19 @@ export interface WsControlMessage {
   message?: string;
   recoverable?: boolean;
 }
+
+// Resource gate: the discriminated union every data-fetching hook resolves
+// to, so `<Resource>` (see components/resource/) can render the matching
+// presentation component for each case. A missing case is a type error
+// instead of a silent blank screen.
+//
+// 401 is intentionally not a member here — an expired session is handled
+// globally (see services/api.ts's response interceptor), not per-page.
+export type ResourceState<T> =
+  | { status: "loading" }
+  | { status: "empty" }
+  | { status: "error"; error: unknown }
+  | { status: "not-found" }
+  | { status: "forbidden" }
+  | { status: "wrong-state"; data: T }
+  | { status: "ready"; data: T };

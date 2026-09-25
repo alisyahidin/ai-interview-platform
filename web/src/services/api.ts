@@ -18,7 +18,10 @@ api.interceptors.request.use((config) => {
 });
 
 // Unwrap backend envelope: { data: { ... } } → { ... }
-// On 401/403, clear stored credentials and redirect to login.
+// On 401 (session is actually invalid), clear stored credentials and
+// redirect to login. A 403 (valid session, insufficient permission) does
+// neither — the rejection propagates so a `<Resource>`-backed page can map
+// it to its `forbidden` state without losing the user's session.
 api.interceptors.response.use(
   (response) => {
     if (response.data && typeof response.data === "object" && "data" in response.data) {
@@ -27,7 +30,7 @@ api.interceptors.response.use(
     return response;
   },
   (error) => {
-    if (error.response?.status === 401 || error.response?.status === 403) {
+    if (error.response?.status === 401) {
       clearToken();
       window.location.href = "/login";
     }
