@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -15,14 +15,45 @@ interface OverridePanelProps {
   onSaved: (override: AssessorOverride) => void;
 }
 
-export default function OverridePanel({ skill, existingOverride, onSaved }: OverridePanelProps) {
+// Imperative handle so a `needs_review` CTA elsewhere on the card (see
+// NeedsReviewFlag/SkillPortfolioCard, ticket #23 AC4) can open this panel
+// and move focus/scroll to it without this component knowing anything
+// about who's asking.
+export interface OverridePanelHandle {
+  openAndFocus: () => void;
+}
+
+const OverridePanel = forwardRef<OverridePanelHandle, OverridePanelProps>(function OverridePanel(
+  { skill, existingOverride, onSaved },
+  ref
+) {
   const [open, setOpen] = useState(false);
-  const [overrideLevel, setOverrideLevel] = useState(existingOverride?.override_level ?? parseLevel(skill.ai_level));
+  const [overrideLevel, setOverrideLevel] = useState(
+    existingOverride?.override_level ?? parseLevel(skill.ai_level) ?? 1
+  );
   const [notes, setNotes] = useState(existingOverride?.assessor_notes ?? "");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [pendingFocus, setPendingFocus] = useState(false);
 
   const hasOverride = !!existingOverride;
+
+  useImperativeHandle(ref, () => ({
+    openAndFocus: () => {
+      setOpen(true);
+      setPendingFocus(true);
+    },
+  }));
+
+  useEffect(() => {
+    if (!open || !pendingFocus) return;
+    // jsdom (and some older browsers) don't implement scrollIntoView at
+    // all — guard the call itself rather than assuming it exists.
+    panelRef.current?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+    panelRef.current?.focus();
+    setPendingFocus(false);
+  }, [open, pendingFocus]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -47,10 +78,15 @@ export default function OverridePanel({ skill, existingOverride, onSaved }: Over
         {hasOverride ? (
           <>
             <div className="flex items-center gap-1.5 text-sm">
-              <LevelBadge level={parseLevel(skill.ai_level)} size="sm" />
+              <LevelBadge
+                level={parseLevel(skill.ai_level)}
+                assessmentStatus={skill.assessment_status}
+                confidence={skill.ai_confidence}
+                size="sm"
+              />
               <span className="text-muted-foreground text-xs">AI</span>
               <span className="text-muted-foreground">→</span>
-              <LevelBadge level={existingOverride!.override_level} size="sm" />
+              <LevelBadge level={existingOverride!.override_level} assessmentStatus="assessed" size="sm" />
               <span className="text-xs text-green-600 font-medium">You Overridden ✓</span>
             </div>
             <Button variant="ghost" size="sm" onClick={() => setOpen(true)}>
@@ -67,7 +103,13 @@ export default function OverridePanel({ skill, existingOverride, onSaved }: Over
   }
 
   return (
-    <div className="border rounded-lg p-4 space-y-3 bg-muted/30">
+    <div
+      ref={panelRef}
+      tabIndex={-1}
+      role="group"
+      aria-label="Override rating"
+      className="border rounded-lg p-4 space-y-3 bg-muted/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
       <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         Override
       </div>
@@ -101,4 +143,6 @@ export default function OverridePanel({ skill, existingOverride, onSaved }: Over
       </div>
     </div>
   );
-}
+});
+
+export default OverridePanel;
