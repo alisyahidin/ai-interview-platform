@@ -1,6 +1,9 @@
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
+import RouteErrorBoundary from "@/components/RouteErrorBoundary";
 
 export default function CandidateLayout() {
+  const location = useLocation();
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       {/* Minimal header — no nav */}
@@ -11,7 +14,9 @@ export default function CandidateLayout() {
       </header>
 
       <main className="flex-1 flex flex-col">
-        <Outlet />
+        <RouteErrorBoundary key={location.pathname}>
+          <Outlet />
+        </RouteErrorBoundary>
       </main>
     </div>
   );

@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import AssessorLayout from "@/components/layout/AssessorLayout";
 import CandidateLayout from "@/components/layout/CandidateLayout";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import NotFoundState from "@/components/resource/NotFoundState";
 import LoginPage from "@/pages/auth/LoginPage";
 import AssessmentListPage from "@/pages/assessments/AssessmentListPage";
 import AssessmentNewPage from "@/pages/assessments/AssessmentNewPage";
@@ -55,6 +56,22 @@ export default function App() {
       {/* Candidate route (public) */}
       <Route element={<CandidateLayout />}>
         <Route path="/interview/:token" element={<InterviewPage />} />
+      </Route>
+
+      {/* Catch-all: any URL that doesn't match a defined route above renders
+          a real 404 inside the app's layout (chrome + nav), not a blank page. */}
+      <Route element={<AssessorLayout />}>
+        <Route
+          path="*"
+          element={
+            <NotFoundState
+              title="Page not found"
+              description="The page you're looking for doesn't exist."
+              backTo="/assessments"
+              backLabel="Back to assessments"
+            />
+          }
+        />
       </Route>
     </Routes>
   );
