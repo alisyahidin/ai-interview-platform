@@ -5,44 +5,83 @@ module Portfolios
   # and final coverage map using Gemini Pro.
   # Runs post-session as a background job.
   class Generator
+    # #8: raised when the model's response can't be turned into a valid
+    # skill batch -- malformed JSON, or Portfolios::LevelNormalizer flagging
+    # any skill in the batch `:invalid` (a value that parses as a number but
+    # isn't a usable 1..5 level, e.g. 7 or 3.7). Deliberately kept small and
+    # local rather than nested under Gemini::HttpClient: this is about the
+    # *content* of an otherwise-successful response, not a transport/API
+    # failure. Gemini::HttpClient::TimeoutError/RateLimitError/ApiError
+    # already exist for the transport side and are reused as-is below.
+    class InvalidModelOutputError < StandardError; end
+
+    # Maps a rescued exception to the `portfolios.failure_code` enum value
+    # (#6: upstream_error / invalid_output / timeout / unknown). Order
+    # matters: TimeoutError and RateLimitError both subclass ApiError, so
+    # the more specific class must be checked first.
+    FAILURE_CODES = {
+      Gemini::HttpClient::TimeoutError => 'timeout',
+      InvalidModelOutputError          => 'invalid_output',
+      Gemini::HttpClient::ApiError     => 'upstream_error'
+    }.freeze
+
     def initialize(session:, gemini_client: nil)
       @session = session
+      @model_name = ENV.fetch('GEMINI_PRO_MODEL', 'gemini-2.5-flash')
       @gemini_client = gemini_client || Gemini::HttpClient.new(
-        model:   ENV.fetch('GEMINI_PRO_MODEL', 'gemini-2.5-flash'),
+        model:   @model_name,
         timeout: 180  # up to 3 minutes for large transcripts
       )
     end
 
     # Returns the Portfolio record with skills populated.
     def call
-      portfolio = @session.portfolio || @session.create_portfolio!(
-        candidate_id:      @session.candidate_id,
-        generation_status: 'pending'
-      )
+      portfolio = Portfolio.pending_for(session: @session)
 
       portfolio.update!(generation_status: 'generating')
 
       prompt   = build_prompt
       response = @gemini_client.generate_content(prompt, temperature: 0.2)
 
-      save_skills(portfolio, response)
-      portfolio.update!(generation_status: 'complete', generated_at: Time.current)
+      save_skills(portfolio, response, prompt)
+      portfolio.update!(
+        generation_status: 'complete',
+        generated_at:      Time.current,
+        failure_code:      nil,
+        generation_error:  nil
+      )
 
       Rails.logger.info("[N10] Portfolio generated for session #{@session.id}")
       portfolio
     rescue => e
-      portfolio&.update!(generation_status: 'failed', generation_error: e.message)
-      Rails.logger.error("[N10] Portfolio generation failed for session #{@session.id}: #{e.class} #{e.message}")
+      fail_portfolio!(portfolio, e)
       raise
     end
 
     private
 
+    def fail_portfolio!(portfolio, error)
+      failure_code = classify_failure(error)
+      portfolio&.update!(generation_status: 'failed', generation_error: error.message, failure_code: failure_code)
+      Rails.logger.error("[N10] Portfolio generation failed for session #{@session.id}: #{error.class} #{error.message}")
+    end
+
+    # Returns the `failure_code` enum value for a rescued exception: the
+    # first entry in FAILURE_CODES whose class the exception is an instance
+    # of, or 'unknown' for anything unclassified (a generic StandardError,
+    # a validation failure, a programming bug -- not a case this generator
+    # can confidently say "retry" or "contact administrator" about).
+    def classify_failure(error)
+      FAILURE_CODES.each do |klass, code|
+        return code if error.is_a?(klass)
+      end
+      'unknown'
+    end
+
     def build_prompt
-      assessment       = @session.assessment
-      configured_skills = assessment.assessment_skills.order(:display_order)
-      coverage_maps     = @session.coverage_maps.order(:id)
-      turns             = @session.transcript_turns.ordered
+      assessment    = @session.assessment
+      coverage_maps = @session.coverage_maps.order(:id)
+      turns         = @session.transcript_turns.ordered
 
       skills_text = configured_skills.map { |s| skill_definition_block(s) }.join("\n\n")
 
@@ -147,35 +186,228 @@ module Portfolios
       }
     end
 
-    def save_skills(portfolio, response)
-      data = response.is_a?(Hash) ? response : JSON.parse(response)
+    # #8: rewritten around Portfolios::LevelNormalizer (#7) and the
+    # assessment-truth schema (#6).
+    #
+    # Every raw skill in the model's response is run through the normalizer
+    # first (pure, no DB writes). If *any* skill comes back `:invalid` --
+    # a value that parses as a number but isn't a usable 1..5 level -- the
+    # whole batch is rejected before anything is touched, and the caller's
+    # rescue in #call turns that into `failure_code: invalid_output` with
+    # the portfolio left exactly as it was. Otherwise, destroying the old
+    # skills, creating the new ones, and recording model/prompt provenance
+    # all happen inside one transaction, so a failure partway through
+    # (e.g. an unexpected validation error) can never leave a partial
+    # portfolio visible.
+    #
+    # AC42 (#7/#8): a configured skill the model drops entirely from its
+    # JSON -- not merely scored as "N/A", genuinely absent from
+    # `configured_skills` -- still gets a row, via `build_omitted_entries`
+    # below: `not_assessed` / `omitted_by_model`, matched against
+    # `configured_skills` (the same list `build_prompt` sent the model) by
+    # the same skill_id-or-label key #9 already uses for override
+    # re-attachment.
+    #
+    # #9: override preservation across regeneration (F7).
+    #
+    # `AssessorOverride` is a strict 1:1 on `portfolio_skill_id` (unique,
+    # NOT NULL FK) -- it has no independent "which skill is this really
+    # about" identity of its own. Before anything is destroyed, every
+    # existing override for this portfolio is snapshotted and keyed by its
+    # *skill's* identity (`skill_id` for configured skills, `skill_label`
+    # for discovered ones, whose `skill_id` is always nil -- accepting the
+    # documented rare-collision risk of two same-labeled discovered skills
+    # sharing a key, same as #7/#8's treatment of that edge case).
+    #
+    # A snapshot entry is "reattachable" when the new batch has an entry
+    # with the same key *and* that entry actually carries a numeric
+    # `ai_level` (a plain `:assessed`/`:needs_review` outcome). A skill that
+    # regenerates as `:not_assessed` (nil `ai_level`) can't host a reattached
+    # override -- `AssessorOverride#ai_level` is a NOT NULL, 1..5-validated
+    # column representing what the AI actually scored, and there is no
+    # honest value to put there for "the model didn't measure this
+    # this time." That case is treated the same as "no longer in the batch."
+    #
+    # Design choice for "preserved but unlinked" (schema-consistent, no new
+    # migration -- `assessor_overrides.portfolio_skill_id` stays NOT NULL):
+    # the OLD `portfolio_skill` row backing a non-reattachable override is
+    # simply *not* destroyed. `destroy_all` only runs against the skills
+    # that don't need to stay around for this reason, so the override's FK
+    # never dangles and the override row itself is never touched -- it goes
+    # on pointing at the real (now-superseded) skill record it always did,
+    # fully intact and fully queryable via `override.portfolio_skill`,
+    # instead of being deleted or silently reassigned to an unrelated skill.
+    # The tradeoff, deliberately accepted: that superseded row keeps
+    # showing up in `portfolio.portfolio_skills` (it's real history, not a
+    # tombstone) even though it's no longer part of the latest generation's
+    # skill set -- callers that want "only this generation's skills" can
+    # already tell the two apart by checking `assessor_override.present?`
+    # combined with whether the skill's key reappears elsewhere in the
+    # association; a dedicated "current batch" marker would need a real
+    # migration and is out of scope here.
+    def save_skills(portfolio, response, prompt)
+      data = parse_model_response(response)
 
-      # Destroy existing skills (idempotent regeneration)
-      portfolio.portfolio_skills.destroy_all
+      configured_entries = build_skill_entries(data['configured_skills'], discovered: false)
+      discovered_entries = build_skill_entries(data['discovered_skills'], discovered: true)
+      omitted_entries    = build_omitted_entries(configured_entries)
 
-      (data['configured_skills'] || []).each do |skill_data|
-        portfolio.portfolio_skills.create!(
-          skill_id:           skill_data['skill_id'],
-          skill_label:        skill_data['skill_label'],
-          is_discovered:      false,
-          ai_level:           skill_data['level'].to_i.clamp(1, 5),
-          ai_confidence:      skill_data['confidence'],
-          evidence:           Array(skill_data['evidence']).first(3),
-          competency_summary: skill_data['competency_summary']
-        )
+      entries = configured_entries + omitted_entries + discovered_entries
+
+      if entries.any? { |entry| entry[:normalized].invalid? }
+        raise InvalidModelOutputError,
+              "Gemini returned an unusable level for one or more skills (session #{@session.id})"
       end
 
-      (data['discovered_skills'] || []).each do |skill_data|
-        portfolio.portfolio_skills.create!(
-          skill_id:           nil,
-          skill_label:        skill_data['skill_label'],
-          is_discovered:      true,
-          ai_level:           skill_data['level'].to_i.clamp(1, 5),
-          ai_confidence:      skill_data['confidence'],
-          evidence:           Array(skill_data['evidence']).first(3),
-          competency_summary: skill_data['competency_summary']
-        )
+      ActiveRecord::Base.transaction do
+        override_snapshot = snapshot_overrides(portfolio)
+        orphaned_skill_ids = orphaned_skill_ids_for(override_snapshot, entries)
+
+        portfolio.portfolio_skills.where.not(id: orphaned_skill_ids).destroy_all
+
+        entries.each do |entry|
+          new_skill = portfolio.portfolio_skills.create!(entry[:attributes])
+          reattach_override(override_snapshot, entry, new_skill)
+        end
+
+        portfolio.update!(model_name: @model_name, prompt_version: Digest::SHA256.hexdigest(prompt))
       end
+    end
+
+    # Keyed snapshot of every override currently attached to this
+    # portfolio's skills, taken before anything is destroyed. Must run
+    # first: once `destroy_all` fires, `has_one :assessor_override,
+    # dependent: :destroy` on `PortfolioSkill` would take any non-preserved
+    # override down with its skill.
+    def snapshot_overrides(portfolio)
+      portfolio.portfolio_skills.includes(:assessor_override).each_with_object({}) do |skill, memo|
+        override = skill.assessor_override
+        next unless override
+
+        memo[override_key(skill.skill_id, skill.skill_label)] = override
+      end
+    end
+
+    # The old portfolio_skill ids that must survive `destroy_all` because
+    # their override has nowhere reattachable to go this generation.
+    def orphaned_skill_ids_for(override_snapshot, entries)
+      reattachable_keys = entries.filter_map do |entry|
+        attrs = entry[:attributes]
+        override_key(attrs[:skill_id], attrs[:skill_label]) if attrs[:ai_level].present?
+      end
+
+      override_snapshot.filter_map do |key, override|
+        override.portfolio_skill_id unless reattachable_keys.include?(key)
+      end
+    end
+
+    # Re-creates a preserved override against the freshly-created skill row
+    # that matches its key, carrying forward everything about the human
+    # judgment (`override_level`, `assessor_notes`, `overridden_by`,
+    # `overridden_at`) while refreshing `ai_level` to the new skill's own
+    # (freshly re-measured) level. A no-op when there's no snapshot entry
+    # for this key, or when the new skill has no `ai_level` to reattach
+    # against (see the design note above `#save_skills`).
+    def reattach_override(override_snapshot, entry, new_skill)
+      return if new_skill.ai_level.nil?
+
+      attrs = entry[:attributes]
+      old_override = override_snapshot[override_key(attrs[:skill_id], attrs[:skill_label])]
+      return unless old_override
+
+      AssessorOverride.create!(
+        portfolio_skill_id: new_skill.id,
+        ai_level:           new_skill.ai_level,
+        override_level:     old_override.override_level,
+        assessor_notes:     old_override.assessor_notes,
+        overridden_by:      old_override.overridden_by,
+        overridden_at:      old_override.overridden_at
+      )
+    end
+
+    # Configured skills are keyed by their stable `skill_id`; discovered
+    # skills (whose `skill_id` is always nil) fall back to `skill_label` --
+    # the only identity they have, per #9's accepted collision risk.
+    def override_key(skill_id, skill_label)
+      skill_id.presence || "label:#{skill_label}"
+    end
+
+    def parse_model_response(response)
+      return response if response.is_a?(Hash)
+
+      JSON.parse(response)
+    rescue JSON::ParserError => e
+      raise InvalidModelOutputError, "Gemini response was not valid JSON: #{e.message}"
+    end
+
+    def build_skill_entries(skill_list, discovered:)
+      Array(skill_list).map do |skill_data|
+        normalized = Portfolios::LevelNormalizer.call(
+          level:          skill_data['level'],
+          confidence:     skill_data['confidence'],
+          coverage_state: coverage_state_for(skill_data['skill_label'])
+        )
+
+        { normalized: normalized, attributes: skill_attributes(skill_data, normalized, discovered: discovered) }
+      end
+    end
+
+    # AC42: every configured skill the model's `configured_skills` JSON
+    # doesn't account for -- matched by the same skill_id-or-label key #9
+    # uses for override re-attachment, not by array position -- gets a
+    # `not_assessed` / `omitted_by_model` row instead of silently getting
+    # no row at all.
+    def build_omitted_entries(configured_entries)
+      present_keys = configured_entries.map do |entry|
+        override_key(entry[:attributes][:skill_id], entry[:attributes][:skill_label])
+      end
+
+      configured_skills
+        .reject { |skill| present_keys.include?(override_key(skill.skill_id, skill.skill_label)) }
+        .map { |skill| omitted_entry_for(skill) }
+    end
+
+    def omitted_entry_for(skill)
+      normalized = Portfolios::LevelNormalizer.call(omitted: true)
+      skill_data = {
+        'skill_id'           => skill.skill_id,
+        'skill_label'        => skill.skill_label,
+        'evidence'           => [],
+        'competency_summary' => "Not assessed: this skill was omitted from the model's response."
+      }
+
+      { normalized: normalized, attributes: skill_attributes(skill_data, normalized, discovered: false) }
+    end
+
+    # The configured skill list `build_prompt` sent the model, memoized so
+    # `save_skills`'s omitted-skill cross-reference (AC42) reuses the exact
+    # same records instead of re-querying.
+    def configured_skills
+      @configured_skills ||= @session.assessment.assessment_skills.order(:display_order)
+    end
+
+    def coverage_state_for(skill_label)
+      coverage_states_by_label[skill_label]
+    end
+
+    def coverage_states_by_label
+      @coverage_states_by_label ||= @session.coverage_maps.each_with_object({}) do |map, memo|
+        memo[map.skill_label] = map.state
+      end
+    end
+
+    def skill_attributes(skill_data, normalized, discovered:)
+      {
+        skill_id:           discovered ? nil : skill_data['skill_id'],
+        skill_label:        skill_data['skill_label'],
+        is_discovered:      discovered,
+        ai_level:           normalized.level,
+        ai_confidence:      normalized.confidence.to_s,
+        evidence:           Array(skill_data['evidence']).first(3),
+        competency_summary: skill_data['competency_summary'],
+        assessment_status:  normalized.assessment_status.to_s,
+        status_reason:      normalized.status_reason&.to_s
+      }
     end
   end
 end

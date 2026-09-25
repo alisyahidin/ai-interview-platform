@@ -43,16 +43,22 @@ module FitGap
       comparisons = vacancy_skills.map do |label, vacancy_skill|
         portfolio_skill = find_portfolio_skill(portfolio_skills, label, vacancy_skill.skill_id)
 
-        if portfolio_skill
+        if portfolio_skill && assessed?(portfolio_skill)
           candidate_level  = portfolio_skill[:effective_level]
           expected_level   = vacancy_skill.expected_level
           delta            = candidate_level - expected_level
           result           = delta == 0 ? 'match' : (delta > 0 ? 'exceed' : 'gap')
+          confidence       = portfolio_skill[:confidence]
         else
+          # No matching portfolio_skill at all, or one that exists but was
+          # never actually assessed (assessment_status not_assessed/needs_review,
+          # ai_level nil) — neither case has a usable candidate_level to diff
+          # against expected_level, so both collapse to the same shape.
           candidate_level = nil
           expected_level  = vacancy_skill.expected_level
           delta           = nil
           result          = 'not_assessed'
+          confidence      = nil
         end
 
         {
@@ -62,7 +68,7 @@ module FitGap
           expected_level:  expected_level,
           result:          result,
           delta:           delta,
-          confidence:      portfolio_skill&.dig(:confidence)
+          confidence:      confidence
         }
       end
 
@@ -74,15 +80,28 @@ module FitGap
       @portfolio.portfolio_skills.includes(:assessor_override).map do |skill|
         override = skill.assessor_override
         {
-          id:              skill.id,
-          skill_id:        skill.skill_id,
-          skill_label:     skill.skill_label,
-          ai_level:        skill.ai_level,
-          effective_level: override ? override.override_level : skill.ai_level,
-          confidence:      skill.ai_confidence,
-          overridden:      override.present?
+          id:                skill.id,
+          skill_id:          skill.skill_id,
+          skill_label:       skill.skill_label,
+          ai_level:          skill.ai_level,
+          effective_level:   override ? override.override_level : skill.ai_level,
+          confidence:        skill.ai_confidence,
+          overridden:        override.present?,
+          assessment_status: skill.assessment_status
         }
       end
+    end
+
+    # A matched portfolio_skill only has a usable level when it was actually
+    # assessed. `not_assessed` (never measured) and `needs_review` (coverage
+    # said not_yet but the model scored it anyway) both carry a nil/untrusted
+    # ai_level and must not be diffed against the expected level.
+    #
+    # No `.nil?` branch here: `portfolio_skills.assessment_status` is
+    # NOT NULL with a DB default of 'assessed', so a real record can never
+    # produce a nil value here.
+    def assessed?(portfolio_skill)
+      portfolio_skill[:assessment_status] == 'assessed'
     end
 
     def find_portfolio_skill(portfolio_skills, label, skill_id)
