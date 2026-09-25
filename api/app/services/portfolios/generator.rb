@@ -5,10 +5,31 @@ module Portfolios
   # and final coverage map using Gemini Pro.
   # Runs post-session as a background job.
   class Generator
+    # #8: raised when the model's response can't be turned into a valid
+    # skill batch -- malformed JSON, or Portfolios::LevelNormalizer flagging
+    # any skill in the batch `:invalid` (a value that parses as a number but
+    # isn't a usable 1..5 level, e.g. 7 or 3.7). Deliberately kept small and
+    # local rather than nested under Gemini::HttpClient: this is about the
+    # *content* of an otherwise-successful response, not a transport/API
+    # failure. Gemini::HttpClient::TimeoutError/RateLimitError/ApiError
+    # already exist for the transport side and are reused as-is below.
+    class InvalidModelOutputError < StandardError; end
+
+    # Maps a rescued exception to the `portfolios.failure_code` enum value
+    # (#6: upstream_error / invalid_output / timeout / unknown). Order
+    # matters: TimeoutError and RateLimitError both subclass ApiError, so
+    # the more specific class must be checked first.
+    FAILURE_CODES = {
+      Gemini::HttpClient::TimeoutError => 'timeout',
+      InvalidModelOutputError          => 'invalid_output',
+      Gemini::HttpClient::ApiError     => 'upstream_error'
+    }.freeze
+
     def initialize(session:, gemini_client: nil)
       @session = session
+      @model_name = ENV.fetch('GEMINI_PRO_MODEL', 'gemini-2.5-flash')
       @gemini_client = gemini_client || Gemini::HttpClient.new(
-        model:   ENV.fetch('GEMINI_PRO_MODEL', 'gemini-2.5-flash'),
+        model:   @model_name,
         timeout: 180  # up to 3 minutes for large transcripts
       )
     end
@@ -26,18 +47,40 @@ module Portfolios
       prompt   = build_prompt
       response = @gemini_client.generate_content(prompt, temperature: 0.2)
 
-      save_skills(portfolio, response)
-      portfolio.update!(generation_status: 'complete', generated_at: Time.current)
+      save_skills(portfolio, response, prompt)
+      portfolio.update!(
+        generation_status: 'complete',
+        generated_at:      Time.current,
+        failure_code:      nil,
+        generation_error:  nil
+      )
 
       Rails.logger.info("[N10] Portfolio generated for session #{@session.id}")
       portfolio
     rescue => e
-      portfolio&.update!(generation_status: 'failed', generation_error: e.message)
-      Rails.logger.error("[N10] Portfolio generation failed for session #{@session.id}: #{e.class} #{e.message}")
+      fail_portfolio!(portfolio, e)
       raise
     end
 
     private
+
+    def fail_portfolio!(portfolio, error)
+      failure_code = classify_failure(error)
+      portfolio&.update!(generation_status: 'failed', generation_error: error.message, failure_code: failure_code)
+      Rails.logger.error("[N10] Portfolio generation failed for session #{@session.id}: #{error.class} #{error.message}")
+    end
+
+    # Returns the `failure_code` enum value for a rescued exception: the
+    # first entry in FAILURE_CODES whose class the exception is an instance
+    # of, or 'unknown' for anything unclassified (a generic StandardError,
+    # a validation failure, a programming bug -- not a case this generator
+    # can confidently say "retry" or "contact administrator" about).
+    def classify_failure(error)
+      FAILURE_CODES.each do |klass, code|
+        return code if error.is_a?(klass)
+      end
+      'unknown'
+    end
 
     def build_prompt
       assessment       = @session.assessment
@@ -148,35 +191,85 @@ module Portfolios
       }
     end
 
-    def save_skills(portfolio, response)
-      data = response.is_a?(Hash) ? response : JSON.parse(response)
+    # #8: rewritten around Portfolios::LevelNormalizer (#7) and the
+    # assessment-truth schema (#6).
+    #
+    # Every raw skill in the model's response is run through the normalizer
+    # first (pure, no DB writes). If *any* skill comes back `:invalid` --
+    # a value that parses as a number but isn't a usable 1..5 level -- the
+    # whole batch is rejected before anything is touched, and the caller's
+    # rescue in #call turns that into `failure_code: invalid_output` with
+    # the portfolio left exactly as it was. Otherwise, destroying the old
+    # skills, creating the new ones, and recording model/prompt provenance
+    # all happen inside one transaction, so a failure partway through
+    # (e.g. an unexpected validation error) can never leave a partial
+    # portfolio visible.
+    #
+    # NB: override preservation across regeneration (F7) is a separate,
+    # blocked-by-this ticket -- it hooks in right here, between
+    # `destroy_all` and creating the new skills, once it lands.
+    def save_skills(portfolio, response, prompt)
+      data = parse_model_response(response)
 
-      # Destroy existing skills (idempotent regeneration)
-      portfolio.portfolio_skills.destroy_all
+      entries = build_skill_entries(data['configured_skills'], discovered: false) +
+                build_skill_entries(data['discovered_skills'], discovered: true)
 
-      (data['configured_skills'] || []).each do |skill_data|
-        portfolio.portfolio_skills.create!(
-          skill_id:           skill_data['skill_id'],
-          skill_label:        skill_data['skill_label'],
-          is_discovered:      false,
-          ai_level:           skill_data['level'].to_i.clamp(1, 5),
-          ai_confidence:      skill_data['confidence'],
-          evidence:           Array(skill_data['evidence']).first(3),
-          competency_summary: skill_data['competency_summary']
-        )
+      if entries.any? { |entry| entry[:normalized].invalid? }
+        raise InvalidModelOutputError,
+              "Gemini returned an unusable level for one or more skills (session #{@session.id})"
       end
 
-      (data['discovered_skills'] || []).each do |skill_data|
-        portfolio.portfolio_skills.create!(
-          skill_id:           nil,
-          skill_label:        skill_data['skill_label'],
-          is_discovered:      true,
-          ai_level:           skill_data['level'].to_i.clamp(1, 5),
-          ai_confidence:      skill_data['confidence'],
-          evidence:           Array(skill_data['evidence']).first(3),
-          competency_summary: skill_data['competency_summary']
-        )
+      ActiveRecord::Base.transaction do
+        portfolio.portfolio_skills.destroy_all
+
+        entries.each { |entry| portfolio.portfolio_skills.create!(entry[:attributes]) }
+
+        portfolio.update!(model_name: @model_name, prompt_version: Digest::SHA256.hexdigest(prompt))
       end
+    end
+
+    def parse_model_response(response)
+      return response if response.is_a?(Hash)
+
+      JSON.parse(response)
+    rescue JSON::ParserError => e
+      raise InvalidModelOutputError, "Gemini response was not valid JSON: #{e.message}"
+    end
+
+    def build_skill_entries(skill_list, discovered:)
+      Array(skill_list).map do |skill_data|
+        normalized = Portfolios::LevelNormalizer.call(
+          level:          skill_data['level'],
+          confidence:     skill_data['confidence'],
+          coverage_state: coverage_state_for(skill_data['skill_label'])
+        )
+
+        { normalized: normalized, attributes: skill_attributes(skill_data, normalized, discovered: discovered) }
+      end
+    end
+
+    def coverage_state_for(skill_label)
+      coverage_states_by_label[skill_label]
+    end
+
+    def coverage_states_by_label
+      @coverage_states_by_label ||= @session.coverage_maps.each_with_object({}) do |map, memo|
+        memo[map.skill_label] = map.state
+      end
+    end
+
+    def skill_attributes(skill_data, normalized, discovered:)
+      {
+        skill_id:           discovered ? nil : skill_data['skill_id'],
+        skill_label:        skill_data['skill_label'],
+        is_discovered:      discovered,
+        ai_level:           normalized.level,
+        ai_confidence:      normalized.confidence.to_s,
+        evidence:           Array(skill_data['evidence']).first(3),
+        competency_summary: skill_data['competency_summary'],
+        assessment_status:  normalized.assessment_status.to_s,
+        status_reason:      normalized.status_reason&.to_s
+      }
     end
   end
 end
