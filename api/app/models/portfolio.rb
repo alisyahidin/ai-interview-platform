@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 class Portfolio < ApplicationRecord
+  include TenantScoped
+
   GENERATION_STATUSES = %w[pending generating complete failed].freeze
 
   # `model_name` (PR2/#6: which Gemini model produced this portfolio's

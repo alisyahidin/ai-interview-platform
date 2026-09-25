@@ -3,6 +3,7 @@
 FactoryBot.define do
   factory :portfolio do
     association :session
+    tenant_id { session.tenant_id }
     candidate_id { 1 }
     generation_status { "complete" }
     generated_at { Time.current }
