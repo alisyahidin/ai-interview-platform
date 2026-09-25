@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { http, HttpResponse } from "msw";
+import { axe } from "vitest-axe";
 import { server } from "@/mocks/server";
 import PortfolioPage from "./PortfolioPage";
 
@@ -48,6 +49,8 @@ const readyPortfolio = {
       is_discovered: false,
       ai_level: "L3",
       ai_confidence: "high",
+      assessment_status: "assessed",
+      status_reason: null,
       evidence: ["Explained hooks clearly"],
       competency_summary: "Solid grasp of component design.",
     },
@@ -114,6 +117,19 @@ describe("PortfolioPage", () => {
     expect(screen.getByText("Configured Skills")).toBeInTheDocument();
     expect(screen.getByText("React")).toBeInTheDocument();
     expect(screen.getByText(/explained hooks clearly/i)).toBeInTheDocument();
+
+    // Phase 3b (#23): scoped to the skill card itself (not the whole page —
+    // this page's header/vacancy-picker chrome is untouched by this ticket
+    // and pre-exist independently of the judgment-badge work) to prove the
+    // new badge/labels introduce no serious/critical violations when
+    // rendered against a real page + MSW-backed fetch, not just in
+    // isolation (see SkillPortfolioCard.test.tsx for the full state matrix).
+    const card = screen.getByRole("group", { name: /^react\b/i });
+    const results = await axe(card);
+    const serious = results.violations.filter(
+      (v) => v.impact === "serious" || v.impact === "critical"
+    );
+    expect(serious).toEqual([]);
   });
 
   it("renders a manual retry action once the polling hook reports stalled, wired to retry()", async () => {

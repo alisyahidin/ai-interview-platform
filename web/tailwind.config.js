@@ -38,6 +38,21 @@ export default {
                     DEFAULT: "hsl(var(--popover))",
                     foreground: "hsl(var(--popover-foreground))",
                 },
+                // Phase 3b (#23): judgment-badge tokens (assessed / tentative /
+                // not-assessed / needs-review), consumed by `badgeVariants` in
+                // src/components/ui/badge.tsx. See src/index.css for values.
+                judgment: {
+                    assessedBg: "hsl(var(--judgment-assessed-bg))",
+                    assessedFg: "hsl(var(--judgment-assessed-fg))",
+                    tentativeBorder: "hsl(var(--judgment-tentative-border))",
+                    tentativeFg: "hsl(var(--judgment-tentative-fg))",
+                    neutralBg: "hsl(var(--judgment-neutral-bg))",
+                    neutralBorder: "hsl(var(--judgment-neutral-border))",
+                    neutralFg: "hsl(var(--judgment-neutral-fg))",
+                    reviewBg: "hsl(var(--judgment-review-bg))",
+                    reviewFg: "hsl(var(--judgment-review-fg))",
+                    reviewBorder: "hsl(var(--judgment-review-border))",
+                },
             },
             borderRadius: {
                 lg: "var(--radius)",

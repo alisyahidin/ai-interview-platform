@@ -14,6 +14,15 @@ if (typeof globalThis.ResizeObserver === "undefined") {
   };
 }
 
+// jsdom doesn't implement canvas, which axe-core's colour-contrast rule
+// probes (via getContext) while checking for icon-font ligatures. Without
+// this, every axe() scan over an element containing an icon logs a noisy
+// "Not implemented" error to stderr (harmless — axe catches it and the
+// scan result is unaffected), so stub it out.
+if (typeof HTMLCanvasElement !== "undefined") {
+  HTMLCanvasElement.prototype.getContext = (() => null) as typeof HTMLCanvasElement.prototype.getContext;
+}
+
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());

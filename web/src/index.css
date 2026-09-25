@@ -35,6 +35,23 @@
         --ring: 184 99% 31%;
 
         --radius: 0.5rem;
+
+        /* Phase 3b (#23) judgment badges: assessed / tentative / not-assessed
+         * / needs-review. Defined as custom properties (rather than inline
+         * Tailwind palette classes) so a future dark theme only needs new
+         * values here — no component changes. Light-mode values only for
+         * now (dark mode is out of scope for this phase); each pairing below
+         * has been checked to meet WCAG 2.2 AA (4.5:1 text, 3:1 non-text UI). */
+        --judgment-assessed-bg: 167 85% 89%;       /* teal-100 */
+        --judgment-assessed-fg: 176 69% 22%;       /* teal-800 — 8.6:1 on assessed-bg */
+        --judgment-tentative-border: 26 90% 37%;   /* amber-700 — 5.0:1 on card bg */
+        --judgment-tentative-fg: 23 82% 31%;       /* amber-800 — 7.1:1 on card bg */
+        --judgment-neutral-bg: 210 40% 96%;        /* slate-100 */
+        --judgment-neutral-border: 215 16% 47%;    /* slate-500 — 4.8:1 on card bg */
+        --judgment-neutral-fg: 215 25% 27%;        /* slate-700 — 9.4:1 on neutral-bg */
+        --judgment-review-bg: 48 97% 89%;          /* amber-100 */
+        --judgment-review-fg: 22 78% 26%;          /* amber-900 — 8.1:1 on review-bg */
+        --judgment-review-border: 26 90% 37%;      /* amber-700 — 4.5:1 on review-bg */
     }
 
     .dark {

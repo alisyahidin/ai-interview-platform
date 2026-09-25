@@ -85,13 +85,32 @@ export interface Portfolio {
   overrides: AssessorOverride[];
 }
 
+// Phase 3b (#23): the three mutually-exclusive base states a skill's
+// judgment can be in, plus `needs_review` — which in the underlying data is
+// its own `assessment_status` value, but always carries a real `ai_level`
+// (see api/app/services/portfolios/level_normalizer.rb) and is presented as
+// an orthogonal flag layered on top of the assessed/tentative base state,
+// not a fourth visual state.
+export type AssessmentStatus = "assessed" | "not_assessed" | "needs_review";
+
+// Why a portfolio skill ended up `not_assessed`. `nil` covers the plain
+// "the model returned no measurable level" case (distinct from omission).
+export type StatusReason = "omitted_by_model" | "invalid_model_output" | null;
+
+export type ConfidenceLevel = "high" | "medium" | "low";
+
 export interface PortfolioSkill {
   id: number;
-  skill_id?: number;
+  skill_id?: number | string;
   skill_label: string;
   is_discovered: boolean;
-  ai_level: string;       // "L1" | "L2" | "L3" | "L4" | "L5"
-  ai_confidence: string;  // "high" | "medium" | "low"
+  // Nullable: `not_assessed` skills never have a level. `ai_level` may still
+  // arrive as a "L3"-style string from older fixtures/tests; components
+  // normalize via `parseLevel`.
+  ai_level: number | string | null;
+  ai_confidence: ConfidenceLevel;
+  assessment_status: AssessmentStatus;
+  status_reason?: StatusReason;
   evidence: string[];
   competency_summary: string;
 }
