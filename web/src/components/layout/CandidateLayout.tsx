@@ -1,7 +1,15 @@
+import type { ReactNode } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import RouteErrorBoundary from "@/components/RouteErrorBoundary";
 
-export default function CandidateLayout() {
+interface CandidateLayoutProps {
+  /** Explicit content to render instead of the routed <Outlet/> — used when
+   * this shell is reused outside the /interview/:token route tree (e.g. the
+   * unauthenticated catch-all 404). Defaults to <Outlet/> for normal routing. */
+  children?: ReactNode;
+}
+
+export default function CandidateLayout({ children }: CandidateLayoutProps) {
   const location = useLocation();
 
   return (
@@ -15,7 +23,7 @@ export default function CandidateLayout() {
 
       <main className="flex-1 flex flex-col">
         <RouteErrorBoundary key={location.pathname}>
-          <Outlet />
+          {children ?? <Outlet />}
         </RouteErrorBoundary>
       </main>
     </div>

@@ -11,10 +11,13 @@ import { authAtom } from "@/stores/authAtom";
 // <Resource>/<NotFoundState>'s own presentation is covered by their own
 // component tests, this just proves the unmatched path actually reaches it.
 //
-// Code review fix: the catch-all route must be nested inside the same
-// <ProtectedRoute> as every other assessor route, so an unauthenticated
-// visitor is redirected to /login instead of seeing the fully authenticated
-// app chrome for an unmatched URL.
+// Follow-up (grill-me): both auth states show the real 404 — never a
+// redirect — but the surrounding shell differs. An authenticated user sees
+// it inside AssessorLayout's normal nav chrome, same as every other assessor
+// route. An unauthenticated visitor never sees that authenticated chrome for
+// an unmatched URL; they get the minimal CandidateLayout shell instead, with
+// "back" pointing at /login rather than the unreachable /assessments.
+// See CatchAllRoute.
 function HydrateAuth({ token, children }: { token: string | null; children: React.ReactNode }) {
   useHydrateAtoms([[authAtom, { token }]]);
   return <>{children}</>;
@@ -33,7 +36,7 @@ function renderApp(path: string, token: string | null) {
 }
 
 describe("App routing — catch-all 404", () => {
-  it("renders <NotFoundState> content inside the layout for an authenticated user on an unmatched path", () => {
+  it("renders <NotFoundState> inside AssessorLayout's chrome for an authenticated user on an unmatched path", () => {
     renderApp("/this/route/does/not/exist", "test-token");
 
     expect(screen.getByText(/page not found/i)).toBeInTheDocument();
@@ -54,12 +57,16 @@ describe("App routing — catch-all 404", () => {
     expect(screen.queryByText(/page not found/i)).not.toBeInTheDocument();
   });
 
-  it("redirects an unauthenticated visitor hitting an unmatched path to /login instead of showing the 404 with chrome", () => {
+  it("renders <NotFoundState> inside the minimal CandidateLayout shell for an unauthenticated visitor, never the authenticated chrome", () => {
     renderApp("/this/route/does/not/exist", null);
 
-    expect(screen.queryByText(/page not found/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/page not found/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /logout/i })).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /ai interview/i })).toBeInTheDocument();
-    expect(screen.getByText(/sign in to your account/i)).toBeInTheDocument();
+
+    // CandidateLayout's minimal header (no nav), not AssessorLayout's.
+    expect(screen.getByText(/^ai interview$/i)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /^assessments$/i })).not.toBeInTheDocument();
+
+    expect(screen.getByRole("link", { name: /go to login/i })).toHaveAttribute("href", "/login");
   });
 });

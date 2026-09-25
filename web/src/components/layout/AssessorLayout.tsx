@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Outlet, Link, useNavigate } from "react-router-dom";
 import { useAtomValue, useSetAtom } from "jotai";
 import { tenantAtom } from "@/stores/tenantAtom";
@@ -13,7 +14,14 @@ const navItems = [
   { href: "/vacancies", label: "Vacancies", icon: Briefcase },
 ];
 
-export default function AssessorLayout() {
+interface AssessorLayoutProps {
+  /** Explicit content to render instead of the routed <Outlet/> — used when
+   * this shell is reused outside normal route nesting (e.g. the
+   * authenticated catch-all 404). Defaults to <Outlet/> for normal routing. */
+  children?: ReactNode;
+}
+
+export default function AssessorLayout({ children }: AssessorLayoutProps) {
   const tenant = useAtomValue(tenantAtom);
   const setAuth = useSetAtom(authAtom);
   const navigate = useNavigate();
@@ -70,7 +78,7 @@ export default function AssessorLayout() {
       {/* Page content */}
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-6">
         <RouteErrorBoundary key={location.pathname}>
-          <Outlet />
+          {children ?? <Outlet />}
         </RouteErrorBoundary>
       </main>
     </div>
