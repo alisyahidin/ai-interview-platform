@@ -167,6 +167,7 @@ module Api
           generation_status: portfolio.generation_status,
           generated_at:      portfolio.generated_at,
           generation_error:  portfolio.generation_error,
+          failure_code:      portfolio.failure_code,
           skills:            portfolio.portfolio_skills.map(&method(:portfolio_skill_json)),
           overrides:         portfolio.assessor_overrides.map(&method(:override_json))
         }
@@ -181,7 +182,9 @@ module Api
           ai_level:          skill.ai_level,
           ai_confidence:     skill.ai_confidence,
           evidence:          skill.evidence_quotes,
-          competency_summary: skill.competency_summary
+          competency_summary: skill.competency_summary,
+          assessment_status: skill.assessment_status,
+          status_reason:     skill.status_reason
         }
       end
 
