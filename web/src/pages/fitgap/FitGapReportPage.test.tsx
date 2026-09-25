@@ -240,6 +240,43 @@ describe("FitGapReportPage skill comparison table", () => {
     expect(screen.getByText(/^⚠ gap: 1 skill$/i)).toBeInTheDocument();
   });
 
+  it("renders the needs_review flag on a row alongside its real (firm) result, not instead of it (Fix 1/#21)", async () => {
+    // Ticket #22/#23 threaded `assessment_status` through, but the fit/gap
+    // engine used to collapse a needs_review row's result/candidate_level
+    // to the not_assessed shape before this fix — this proves the row now
+    // keeps its real computed result *and* shows the orthogonal flag.
+    mockReportReady({
+      skill_comparisons: [
+        ...baseComparisons,
+        {
+          skill_label: "Disputed Skill",
+          skill_id: "disputed",
+          candidate_level: 5,
+          expected_level: 3,
+          result: "exceed",
+          delta: 2,
+          confidence: "medium",
+          assessment_status: "needs_review",
+        },
+      ],
+      culture_narrative: "Sample culture narrative.",
+      overall_narrative: "Sample overall narrative.",
+    });
+
+    renderPage();
+
+    const disputedRow = (await screen.findByText("Disputed Skill")).closest("tr");
+    expect(disputedRow).not.toBeNull();
+    // Real result is still shown, not swallowed into "Not assessed".
+    expect(disputedRow!).toHaveTextContent(/exceeds/i);
+    expect(disputedRow!).toHaveTextContent("L5");
+    // ...and the needs_review flag is layered on top of it.
+    expect(disputedRow!).toHaveTextContent(/needs review/i);
+
+    // Tallied in the summary too — a needs_review skill isn't "not assessed".
+    expect(screen.getByText(/needs review: 1 skill/i)).toBeInTheDocument();
+  });
+
   it("marks a low-confidence row tentative and keeps it out of the firm gap tally", async () => {
     renderPage();
     await screen.findByText("Communication");

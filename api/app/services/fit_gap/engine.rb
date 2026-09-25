@@ -104,16 +104,21 @@ module FitGap
       end
     end
 
-    # A matched portfolio_skill only has a usable level when it was actually
-    # assessed. `not_assessed` (never measured) and `needs_review` (coverage
-    # said not_yet but the model scored it anyway) both carry a nil/untrusted
-    # ai_level and must not be diffed against the expected level.
+    # A matched portfolio_skill has a usable level whenever the underlying
+    # ai_level is real. `not_assessed` (never measured) is the only status
+    # without one -- `needs_review` (coverage said not_yet but the model
+    # scored it anyway) always carries a real ai_level (see
+    # `effective_portfolio_skills` above), so it must be diffed against the
+    # expected level just like `assessed`. `assessment_status` itself stays
+    # 'needs_review' on the resulting row (untouched by this method) so the
+    # frontend can still render the orthogonal review flag on top of
+    # whatever result/confidence gets computed here.
     #
     # No `.nil?` branch here: `portfolio_skills.assessment_status` is
     # NOT NULL with a DB default of 'assessed', so a real record can never
     # produce a nil value here.
     def assessed?(portfolio_skill)
-      portfolio_skill[:assessment_status] == 'assessed'
+      %w[assessed needs_review].include?(portfolio_skill[:assessment_status])
     end
 
     def find_portfolio_skill(portfolio_skills, label, skill_id)

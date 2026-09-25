@@ -1,6 +1,7 @@
 import { CheckCircle2, CircleDashed, HelpCircle } from "lucide-react";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { LEVEL_LABELS, LEVEL_DESCRIPTIONS } from "@/utils/constants";
+import { classifyJudgment } from "@/utils/judgment";
 import { cn } from "@/lib/utils";
 import type { AssessmentStatus, ConfidenceLevel } from "@/types";
 
@@ -28,8 +29,9 @@ export default function LevelBadge({
   size = "md",
   className,
 }: LevelBadgeProps) {
-  const isNotAssessed = assessmentStatus === "not_assessed" || level == null;
-  const isTentative = !isNotAssessed && confidence === "low";
+  const { isNotAssessed, isTentative } = classifyJudgment(assessmentStatus, confidence, {
+    hasLevel: level != null,
+  });
 
   const variant: BadgeProps["variant"] = isNotAssessed
     ? "notAssessed"

@@ -74,6 +74,12 @@ export interface TranscriptTurn {
   created_at: string;
 }
 
+// Machine-readable reason for a portfolio's `failed` generation, set by the
+// backend's failure classifier (ticket #22). Named here so both the
+// `Portfolio` type and any page-level copy lookup (e.g. `PortfolioPage`'s
+// `FAILURE_COPY`) share one definition instead of redeclaring the union.
+export type FailureCode = "upstream_error" | "invalid_output" | "timeout" | "unknown";
+
 export interface Portfolio {
   id: number;
   session_id: number;
@@ -82,13 +88,11 @@ export interface Portfolio {
   generated_at?: string;
   generation_error?: string;
   /**
-   * Machine-readable reason for a `failed` generation, set by the backend's
-   * failure classifier (ticket #22). `null`/`undefined` covers rows from
-   * before this column existed, or any non-`failed` status — callers must
-   * treat that as "unknown reason" and fall back to generic messaging
-   * rather than crashing (ticket #25).
+   * `null`/`undefined` covers rows from before this column existed, or any
+   * non-`failed` status — callers must treat that as "unknown reason" and
+   * fall back to generic messaging rather than crashing (ticket #25).
    */
-  failure_code?: "upstream_error" | "invalid_output" | "timeout" | "unknown" | null;
+  failure_code?: FailureCode | null;
   skills: PortfolioSkill[];
   overrides: AssessorOverride[];
 }
