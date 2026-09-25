@@ -1,8 +1,10 @@
 import { useId, useState } from "react";
 import { LEVEL_LABELS, FIT_GAP_RESULT_LABELS, FIT_GAP_RESULT_CLASSES } from "@/utils/constants";
+import { classifyJudgment } from "@/utils/judgment";
 import { cn } from "@/lib/utils";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { TruncatedText } from "@/components/ui/truncated-text";
+import NeedsReviewFlag from "@/components/portfolio/NeedsReviewFlag";
 import type { SkillComparison } from "@/types";
 
 interface ComparisonTableProps {
@@ -13,13 +15,21 @@ interface ComparisonTableProps {
 // braces) if the underlying skill's assessment_status says so even when
 // `result` hasn't caught up — see the AssessmentStatus comment in types.
 function isNotAssessed(c: SkillComparison): boolean {
-  return c.result === "not_assessed" || c.assessment_status === "not_assessed";
+  return classifyJudgment(c.assessment_status, c.confidence, { result: c.result }).isNotAssessed;
 }
 
 // Low-confidence rows must never read as a firm result (AC11): they're
 // marked tentative and kept out of the firm match/gap/exceed tallies.
 function isTentative(c: SkillComparison): boolean {
-  return !isNotAssessed(c) && c.confidence === "low";
+  return classifyJudgment(c.assessment_status, c.confidence, { result: c.result }).isTentative;
+}
+
+// Orthogonal `needs_review` flag (spec #21): can sit on top of any of the
+// three result states above — a needs_review row still carries a real
+// candidate_level/delta/result (see FitGap::Engine#assessed?), so this is
+// checked independently rather than folded into isNotAssessed/isTentative.
+function isNeedsReview(c: SkillComparison): boolean {
+  return classifyJudgment(c.assessment_status, c.confidence, { result: c.result }).isNeedsReview;
 }
 
 function OverrideMarker({ originalLevel }: { originalLevel?: number | null }) {
@@ -110,6 +120,7 @@ export default function ComparisonTable({ comparisons }: ComparisonTableProps) {
   const exceedCount = comparisons.filter((c) => !isNotAssessed(c) && !isTentative(c) && c.result === "exceed").length;
   const tentativeCount = comparisons.filter((c) => !isNotAssessed(c) && isTentative(c)).length;
   const notAssessedSkills = comparisons.filter(isNotAssessed);
+  const needsReviewCount = comparisons.filter(isNeedsReview).length;
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -133,7 +144,10 @@ export default function ComparisonTable({ comparisons }: ComparisonTableProps) {
                 return (
                   <tr key={c.skill_id ?? `${c.skill_label}-${i}`} className="border-b last:border-0">
                     <td className="px-4 py-2.5 max-w-[240px]">
-                      <TruncatedText text={c.skill_label} />
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <TruncatedText text={c.skill_label} className="min-w-0" />
+                        {isNeedsReview(c) && <NeedsReviewFlag />}
+                      </div>
                     </td>
                     <td className="px-4 py-2.5 text-center text-muted-foreground">
                       {LEVEL_LABELS[c.expected_level] ?? c.expected_level}
@@ -184,6 +198,11 @@ export default function ComparisonTable({ comparisons }: ComparisonTableProps) {
             <span>
               — Not assessed: {notAssessedSkills.length} skill{notAssessedSkills.length !== 1 ? "s" : ""} (
               {notAssessedSkills.map((c) => c.skill_label).join(", ")})
+            </span>
+          )}
+          {needsReviewCount > 0 && (
+            <span>
+              🚩 Needs review: {needsReviewCount} skill{needsReviewCount !== 1 ? "s" : ""}
             </span>
           )}
           <span className="ml-auto">✏ = human override applied</span>

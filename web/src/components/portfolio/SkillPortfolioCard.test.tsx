@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "vitest-axe";
 import SkillPortfolioCard from "./SkillPortfolioCard";
@@ -185,14 +185,23 @@ describe("SkillPortfolioCard", () => {
     ).toBeInTheDocument();
   });
 
-  it("truncates a very long skill name but keeps the full value available via title (AC39)", () => {
+  it("truncates a very long skill name but keeps the full value keyboard-accessible via a tooltip (AC39)", async () => {
     const longName =
       "Distributed Systems Architecture and Fault-Tolerant Consensus Protocol Design";
     const skill = makeSkill({ skill_label: longName });
     render(<SkillPortfolioCard skill={skill} onOverrideSaved={vi.fn()} />);
 
-    const nameEl = screen.getByTitle(longName);
+    // Same shared `TruncatedText` component the fit/gap comparison table
+    // uses (AC39) — a focusable span, not a plain `title` attribute that
+    // only mouse hover could reach.
+    const nameEl = screen.getByText(longName);
     expect(nameEl).toHaveClass("truncate");
-    expect(nameEl).toHaveTextContent(longName);
+    expect(nameEl).toHaveAttribute("tabIndex", "0");
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+
+    // Keyboard focus alone (no hover) must reveal the full name.
+    fireEvent.focus(nameEl);
+    const tooltip = await screen.findByRole("tooltip");
+    expect(tooltip).toHaveTextContent(longName);
   });
 });

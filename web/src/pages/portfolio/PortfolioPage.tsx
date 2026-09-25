@@ -15,14 +15,12 @@ import { portfoliosApi } from "@/services/portfolios";
 import { usePolling } from "@/hooks/usePolling";
 import { sessionHasNoContentYet } from "@/utils/session";
 import { ArrowLeft, Download, Loader2, RefreshCw, Zap, FileText } from "lucide-react";
-import type { Portfolio, AssessorOverride, Vacancy, Session } from "@/types";
+import type { Portfolio, AssessorOverride, Vacancy, Session, FailureCode } from "@/types";
 
 interface SessionResponse {
   session: Session;
   assessment: { id: number; name: string; time_limit_min: number };
 }
-
-type FailureCode = "upstream_error" | "invalid_output" | "timeout" | "unknown";
 
 /**
  * Generation-failure copy, keyed by the backend's `failure_code` (ticket

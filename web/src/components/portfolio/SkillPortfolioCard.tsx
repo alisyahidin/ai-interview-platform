@@ -3,6 +3,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import LevelBadge from "./LevelBadge";
 import NeedsReviewFlag from "./NeedsReviewFlag";
 import OverridePanel, { type OverridePanelHandle } from "./OverridePanel";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { TruncatedText } from "@/components/ui/truncated-text";
 import { Zap, MessageSquareQuote } from "lucide-react";
 import {
   parseLevel,
@@ -11,6 +13,7 @@ import {
   STATUS_REASON_LABELS,
   STATUS_REASON_FALLBACK,
 } from "@/utils/constants";
+import { classifyJudgment, type JudgmentClassification } from "@/utils/judgment";
 import { cn } from "@/lib/utils";
 import type { PortfolioSkill, AssessorOverride, StatusReason } from "@/types";
 
@@ -58,10 +61,12 @@ function reasonCopy(reason: StatusReason | undefined): string {
  * as the card's group label; sighted users get the same facts via the
  * visible badge/labels below.
  */
-function buildAccessibleSummary(skill: PortfolioSkill, effectiveLevel: number | null): string {
-  const isNotAssessed = skill.assessment_status === "not_assessed";
-  const isNeedsReview = skill.assessment_status === "needs_review";
-  const isTentative = !isNotAssessed && skill.ai_confidence === "low";
+function buildAccessibleSummary(
+  skill: PortfolioSkill,
+  effectiveLevel: number | null,
+  judgment: JudgmentClassification
+): string {
+  const { isNotAssessed, isTentative, isNeedsReview } = judgment;
 
   const parts: string[] = [];
 
@@ -102,12 +107,11 @@ export default function SkillPortfolioCard({
   onOverrideSaved,
 }: SkillPortfolioCardProps) {
   const effectiveLevel = override?.override_level ?? parseLevel(skill.ai_level);
-  const isNotAssessed = skill.assessment_status === "not_assessed";
-  const isNeedsReview = skill.assessment_status === "needs_review";
-  const isTentative = !isNotAssessed && skill.ai_confidence === "low";
+  const judgment = classifyJudgment(skill.assessment_status, skill.ai_confidence);
+  const { isNotAssessed, isTentative, isNeedsReview } = judgment;
   const overridePanelRef = useRef<OverridePanelHandle>(null);
 
-  const accessibleSummary = buildAccessibleSummary(skill, effectiveLevel);
+  const accessibleSummary = buildAccessibleSummary(skill, effectiveLevel, judgment);
 
   return (
     <Card role="group" aria-label={accessibleSummary}>
@@ -122,12 +126,9 @@ export default function SkillPortfolioCard({
             />
             <div className="space-y-0.5 min-w-0">
               <div className="flex items-center gap-1.5 flex-wrap">
-                <span
-                  className="font-semibold truncate max-w-[16rem]"
-                  title={skill.skill_label}
-                >
-                  {skill.skill_label}
-                </span>
+                <TooltipProvider delayDuration={200}>
+                  <TruncatedText text={skill.skill_label} className="font-semibold max-w-[16rem]" />
+                </TooltipProvider>
                 {skill.is_discovered && (
                   <span className="flex items-center gap-0.5 text-xs text-amber-600 shrink-0">
                     <Zap aria-hidden="true" className="h-3 w-3" /> Discovered
