@@ -14,8 +14,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { assessmentsApi } from "@/services/assessments";
+import { usePolling } from "@/hooks/usePolling";
 import { LEVEL_LABELS } from "@/utils/constants";
-import { ArrowLeft, Copy, Check, Eye, Pencil, Clock, Plus, UserRound } from "lucide-react";
+import { ArrowLeft, Copy, Check, Eye, Pencil, Clock, Plus, RefreshCw, UserRound } from "lucide-react";
 import type { Assessment, Session } from "@/types";
 
 function SessionRow({
@@ -149,12 +150,12 @@ export default function AssessmentInvitePage() {
   }, [id]);
 
   // Poll while any session is live or pending
-  useEffect(() => {
-    const hasActive = sessions.some((s) => s.status !== "ended");
-    if (!hasActive) return;
-    const interval = setInterval(loadSessions, 5000);
-    return () => clearInterval(interval);
-  }, [sessions, loadSessions]);
+  const hasActiveSessions = sessions.some((s) => s.status !== "ended");
+  const { isStalled: pollingStalled, retry: retryPolling } = usePolling(
+    loadSessions,
+    5000,
+    hasActiveSessions
+  );
 
   const openInviteDialog = () => {
     setCandidateNameInput("");
@@ -277,6 +278,16 @@ export default function AssessmentInvitePage() {
       )}
 
       <Separator />
+
+      {/* Polling stalled — repeated failures refreshing candidate status */}
+      {pollingStalled && (
+        <div className="flex items-center justify-between gap-3 border border-amber-400/40 bg-amber-50 rounded-lg px-4 py-3 text-sm text-amber-800">
+          <span>Live status updates paused after repeated failures.</span>
+          <Button variant="outline" size="sm" onClick={retryPolling}>
+            <RefreshCw className="h-3.5 w-3.5 mr-1.5" /> Retry now
+          </Button>
+        </div>
+      )}
 
       {/* Sessions list */}
       <div className="space-y-2">

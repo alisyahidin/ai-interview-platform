@@ -36,10 +36,17 @@ export default function FitGapReportPage() {
         try {
           await portfoliosApi.triggerFitGap(portfolio.id, Number(vacancyId));
           setGenerating(true);
-        } catch {
+        } catch (triggerError) {
           setGenerating(false);
+          // A failure to even trigger generation is a real failure — surface
+          // it to the polling hook so it counts toward the backoff/stall.
+          throw triggerError;
         }
+        return;
       }
+      // Anything other than "no report yet" is a genuine failure (network
+      // error, 5xx, etc.) — surface it so the polling hook backs off.
+      throw e;
     }
   }, [portfolio, vacancyId]);
 
@@ -56,10 +63,14 @@ export default function FitGapReportPage() {
   }, [sessionId]);
 
   useEffect(() => {
-    if (portfolio) fetchReport();
+    if (portfolio) fetchReport().catch(() => {});
   }, [portfolio, fetchReport]);
 
-  usePolling(fetchReport, 5000, generating && !!portfolio);
+  const { isStalled: pollingStalled, retry: retryPolling } = usePolling(
+    fetchReport,
+    5000,
+    generating && !!portfolio
+  );
 
   const handleRegenerate = async () => {
     if (!portfolio) return;
@@ -141,10 +152,22 @@ export default function FitGapReportPage() {
       </div>
 
       {/* Generating */}
-      {generating && (
+      {generating && !pollingStalled && (
         <div className="border rounded-lg p-12 text-center space-y-3">
           <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
           <p className="text-sm text-muted-foreground">Generating fit/gap report...</p>
+        </div>
+      )}
+
+      {/* Polling stalled — repeated failures while waiting for the report */}
+      {pollingStalled && (
+        <div className="border border-amber-400/40 rounded-lg p-6 text-center space-y-3">
+          <p className="text-sm text-amber-700">
+            Having trouble checking on the report. We've stopped retrying automatically.
+          </p>
+          <Button variant="outline" size="sm" onClick={retryPolling}>
+            <RefreshCw className="h-3.5 w-3.5 mr-1.5" /> Retry now
+          </Button>
         </div>
       )}
 
