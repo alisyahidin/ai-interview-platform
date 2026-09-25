@@ -91,7 +91,7 @@ RSpec.describe Portfolios::Generator do
       let!(:previous_state) do
         {
           skill_ids:      portfolio.portfolio_skills.order(:skill_id).pluck(:id),
-          model_name:     portfolio.model_name,
+          model_name:     portfolio[:model_name],
           prompt_version: portfolio.prompt_version
         }
       end
@@ -118,9 +118,11 @@ RSpec.describe Portfolios::Generator do
       end
 
       it "does not overwrite the previous provenance" do
-        expect(portfolio.reload).to have_attributes(
-          model_name: previous_state[:model_name], prompt_version: previous_state[:prompt_version]
-        )
+        portfolio.reload
+        aggregate_failures do
+          expect(portfolio[:model_name]).to eq(previous_state[:model_name])
+          expect(portfolio.prompt_version).to eq(previous_state[:prompt_version])
+        end
       end
     end
 
@@ -187,7 +189,7 @@ RSpec.describe Portfolios::Generator do
     let!(:portfolio) { generator.call }
 
     it "records the model_name used for the generation" do
-      expect(portfolio.model_name).to eq(ENV.fetch("GEMINI_PRO_MODEL", "gemini-2.5-flash"))
+      expect(portfolio[:model_name]).to eq(ENV.fetch("GEMINI_PRO_MODEL", "gemini-2.5-flash"))
     end
 
     it "records prompt_version as the sha256 digest of the assembled prompt" do

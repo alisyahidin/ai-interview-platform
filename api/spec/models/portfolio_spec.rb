@@ -21,17 +21,20 @@ RSpec.describe Portfolio, type: :model do
   # entirely absent from the store; setting it to nil here lets the
   # presence validation -- not the fallback's own "please set Current..."
   # guard -- be what actually fires.
-  #
-  # NB: `errors[:tenant_id]` (message-building) isn't usable here -- a
-  # pre-existing quirk where Portfolio#model_name (PR2/#6) shadows
-  # ActiveModel::Naming's instance-level `model_name`, which
-  # ActiveModel::Error#generate_message calls to build `%{model}`. `added?`
-  # checks the error's (attribute, type) directly and never builds a
-  # message, so it isn't affected.
   it "requires tenant_id" do
     portfolio = build(:portfolio, session: session_a, tenant_id: nil)
     Current.using(tenant_id: nil) { portfolio.valid? }
     expect(portfolio.errors.added?(:tenant_id, :blank)).to be true
+  end
+
+  # Regression guard: Portfolio#model_name (PR2/#6) shadows ActiveModel::Naming's
+  # instance-level `model_name`, which ActiveModel::Error#generate_message calls
+  # internally to build `%{model}` in a message. Without the explicit delegate
+  # in Portfolio, this raises NoMethodError instead of returning a normal message.
+  it "can build a human-readable validation message (model_name delegate isn't shadowed)" do
+    portfolio = build(:portfolio, session: session_a, tenant_id: nil)
+    Current.using(tenant_id: nil) { portfolio.valid? }
+    expect(portfolio.errors.full_messages).to include("Tenant can't be blank")
   end
 
   describe "default_scope" do

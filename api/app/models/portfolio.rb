@@ -22,6 +22,18 @@ class Portfolio < ApplicationRecord
     super
   end
 
+  # ActiveRecord::Base normally gives every instance a `#model_name` that
+  # delegates to `self.class.model_name` (an ActiveModel::Name) -- used
+  # internally by ActiveModel::Errors#full_message for i18n lookups. Since
+  # the bypass above lets AR generate a real reader for the `model_name`
+  # COLUMN, that reader shadows the delegate, so any invalid Portfolio
+  # instance blows up on `errors.full_messages`/`errors[:attr]` with
+  # `NoMethodError: undefined method 'human' for nil` instead of a normal
+  # validation message. Restore the delegate explicitly; read the stored
+  # Gemini model string via `self[:model_name]` (the writer `model_name=`
+  # is unaffected -- it doesn't collide with anything).
+  delegate :model_name, to: :class
+
   belongs_to :session
   has_many :portfolio_skills, dependent: :destroy
   has_many :assessor_overrides, through: :portfolio_skills
