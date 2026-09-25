@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -21,6 +21,38 @@ interface SessionResponse {
   session: Session;
   assessment: { id: number; name: string; time_limit_min: number };
 }
+
+type FailureCode = "upstream_error" | "invalid_output" | "timeout" | "unknown";
+
+/**
+ * Generation-failure copy, keyed by the backend's `failure_code` (ticket
+ * #22). `timeout`/`upstream_error` are transient infra problems worth
+ * retrying; `invalid_output`/`unknown` mean the model or pipeline produced
+ * something the app can't use, which retrying can't fix — those need an
+ * administrator. A `null`/unrecognized code (e.g. a pre-#22 row) falls back
+ * to the generic message with a Retry action, matching prior behavior.
+ */
+const FAILURE_COPY: Record<FailureCode, { message: string; retryable: boolean }> = {
+  timeout: {
+    message: "Portfolio generation timed out — this is usually a temporary problem.",
+    retryable: true,
+  },
+  upstream_error: {
+    message: "Portfolio generation failed because of a temporary problem with the AI service.",
+    retryable: true,
+  },
+  invalid_output: {
+    message:
+      "Portfolio generation failed because the AI service returned something this app couldn't process.",
+    retryable: false,
+  },
+  unknown: {
+    message: "Portfolio generation failed for an unrecognized reason.",
+    retryable: false,
+  },
+};
+
+const GENERIC_FAILURE_MESSAGE = "Portfolio generation failed.";
 
 export default function PortfolioPage() {
   const { id, sessionId } = useParams<{ id: string; sessionId: string }>();
@@ -68,13 +100,27 @@ function PortfolioPageContent({
   const [vacancies, setVacancies] = useState<Vacancy[]>([]);
   const [selectedVacancy, setSelectedVacancy] = useState<string>("");
   const [exporting, setExporting] = useState<"pdf" | "json" | null>(null);
+  // Announced via an ARIA live region when generation completes while the
+  // assessor is still on the page (ticket #25 / AC37), so a screen-reader
+  // user gets feedback without losing their place.
+  const [announcement, setAnnouncement] = useState("");
+  // Tracks whether the assessor was watching a generation-in-progress state
+  // across polls, so a fresh page load that lands directly on a completed
+  // portfolio doesn't spuriously announce a "just finished" transition.
+  const wasGeneratingRef = useRef(false);
 
   const fetchPortfolio = useCallback(async () => {
     const res = await sessionsApi.getPortfolio(Number(sessionId));
     const data = res.data as any;
-    if (data.status === "generating" || data.portfolio?.generation_status === "generating" || data.portfolio?.generation_status === "pending") {
+    const status = data.portfolio?.generation_status;
+    if (data.status === "generating" || status === "generating" || status === "pending") {
+      wasGeneratingRef.current = true;
       setGenerating(true);
     } else if (data.portfolio) {
+      if (wasGeneratingRef.current && status === "complete") {
+        setAnnouncement("Portfolio generation is complete.");
+      }
+      wasGeneratingRef.current = false;
       setPortfolio(data.portfolio);
       setGenerating(false);
       // Build overrides map
@@ -84,6 +130,11 @@ function PortfolioPageContent({
       });
       setOverrides(overrideMap);
     }
+  }, [sessionId]);
+
+  const handleRetryGeneration = useCallback(async () => {
+    await sessionsApi.regeneratePortfolio(Number(sessionId));
+    setGenerating(true);
   }, [sessionId]);
 
   useEffect(() => {
@@ -150,10 +201,20 @@ function PortfolioPageContent({
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
+      {/* Announces generation completing while the assessor is on the page
+          (AC37), without disturbing their focus/scroll position. */}
+      <div aria-live="polite" role="status" className="sr-only">
+        {announcement}
+      </div>
+
       {/* Header */}
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-2">
-          <Link to={`/assessments/${id}/invite`} className="text-muted-foreground hover:text-foreground">
+          <Link
+            to={`/assessments/${id}/invite`}
+            aria-label="Back to sessions"
+            className="text-muted-foreground hover:text-foreground"
+          >
             <ArrowLeft className="h-4 w-4" />
           </Link>
           <div>
@@ -213,22 +274,30 @@ function PortfolioPageContent({
       {/* Polling stalled — repeated failures while waiting for the portfolio */}
       {pollingStalled && <PollingStalledBanner onRetry={retryPolling} />}
 
-      {/* Failed state */}
-      {!generating && portfolio?.generation_status === "failed" && (
-        <div className="border border-destructive/40 rounded-lg p-6 text-center space-y-3">
-          <p className="text-sm text-destructive">Portfolio generation failed.</p>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={async () => {
-              await sessionsApi.regeneratePortfolio(Number(sessionId));
-              setGenerating(true);
-            }}
-          >
-            <RefreshCw className="h-3.5 w-3.5 mr-1.5" /> Retry
-          </Button>
-        </div>
-      )}
+      {/* Failed state — message and action are driven by `failure_code`
+          (ticket #25). A missing/unrecognized code (e.g. a pre-#22 row)
+          falls back to the pre-existing generic message + Retry. */}
+      {!generating && portfolio?.generation_status === "failed" && (() => {
+        const code = portfolio.failure_code;
+        const copy = code ? FAILURE_COPY[code] : undefined;
+        const message = copy?.message ?? GENERIC_FAILURE_MESSAGE;
+        const isRetryable = copy?.retryable ?? true;
+
+        return (
+          <div className="border border-destructive/40 rounded-lg p-6 text-center space-y-3">
+            <p className="text-sm text-destructive">{message}</p>
+            {isRetryable ? (
+              <Button variant="outline" size="sm" onClick={handleRetryGeneration}>
+                <RefreshCw className="h-3.5 w-3.5 mr-1.5" /> Retry
+              </Button>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Retrying won't fix this. Please contact your administrator for help.
+              </p>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Ready state */}
       {!generating && portfolio?.generation_status === "complete" && (
