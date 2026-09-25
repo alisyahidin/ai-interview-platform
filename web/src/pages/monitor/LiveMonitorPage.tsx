@@ -17,16 +17,41 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import TranscriptBubble from "@/components/interview/TranscriptBubble";
-import { useCoverageWebSocket } from "@/hooks/useCoverageWebSocket";
+import Resource from "@/components/resource/Resource";
+import WrongStateState from "@/components/resource/WrongStateState";
+import { useResource } from "@/hooks/useResource";
+import { usePolling } from "@/hooks/usePolling";
+import { useCoverageWebSocket, type CoverageConnectionState } from "@/hooks/useCoverageWebSocket";
 import { sessionsApi } from "@/services/sessions";
 import {
   COVERAGE_STATE_LABELS,
   COVERAGE_STATE_WIDTH,
   COVERAGE_STATE_COLOR,
 } from "@/utils/constants";
-import { ArrowLeft, CheckCircle, Clock, Radio, Zap } from "lucide-react";
-import type { TranscriptTurn } from "@/types";
-import { cn } from "@/lib/utils";
+import { ArrowLeft, CheckCircle, Clock, Radio, RefreshCw, Zap } from "lucide-react";
+import type { Session, TranscriptTurn } from "@/types";
+
+const TRANSCRIPT_POLL_BASE_MS = 3000;
+
+interface LiveMonitorData {
+  session: Session;
+  assessmentName: string;
+  initialTranscript: TranscriptTurn[];
+}
+
+async function fetchLiveMonitorData(sessionId: number): Promise<{ data: LiveMonitorData }> {
+  const [sRes, tRes] = await Promise.all([
+    sessionsApi.get(sessionId),
+    sessionsApi.getTranscript(sessionId),
+  ]);
+  return {
+    data: {
+      session: sRes.data.session,
+      assessmentName: sRes.data.assessment?.name ?? "",
+      initialTranscript: tRes.data.turns,
+    },
+  };
+}
 
 function ElapsedTimer({ startedAt }: { startedAt: string }) {
   const [elapsed, setElapsed] = useState(0);
@@ -49,93 +74,188 @@ function ElapsedTimer({ startedAt }: { startedAt: string }) {
   );
 }
 
-export default function LiveMonitorPage() {
-  const { id, sessionId } = useParams<{ id: string; sessionId: string }>();
-  const navigate = useNavigate();
-  const [startedAt, setStartedAt] = useState<string | null>(null);
-  const [assessmentName, setAssessmentName] = useState<string>("");
-  const [transcript, setTranscript] = useState<TranscriptTurn[]>([]);
-  const [loading, setLoading] = useState(true);
+/** Passive "last updated Xs ago" metadata — never an alarming indicator. */
+function LastUpdatedLabel({ at }: { at: Date }) {
+  const [, forceTick] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => forceTick((t) => t + 1), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const seconds = Math.max(0, Math.floor((Date.now() - at.getTime()) / 1000));
+  return <span>last updated {seconds}s ago</span>;
+}
+
+function ConnectionStatus({
+  connectionState,
+  lastUpdatedAt,
+  onReconnect,
+}: {
+  connectionState: CoverageConnectionState;
+  lastUpdatedAt: Date | null;
+  onReconnect: () => void;
+}) {
+  switch (connectionState) {
+    case "connecting":
+      return (
+        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+          <Radio className="h-3 w-3" />
+          Connecting...
+        </span>
+      );
+    case "connected":
+      return (
+        <span className="flex items-center gap-1.5 text-xs text-green-600">
+          <Radio className="h-3 w-3" />
+          <span>Live</span>
+          {lastUpdatedAt && (
+            <span className="text-muted-foreground font-normal">
+              &middot; <LastUpdatedLabel at={lastUpdatedAt} />
+            </span>
+          )}
+        </span>
+      );
+    case "reconnecting":
+      return (
+        <span className="flex items-center gap-1 text-xs text-amber-600">
+          <Radio className="h-3 w-3" />
+          Reconnecting...
+        </span>
+      );
+    case "gave-up":
+      return (
+        <span className="flex items-center gap-2 text-xs text-destructive">
+          <span className="flex items-center gap-1">
+            <Radio className="h-3 w-3" />
+            Connection lost
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-6 px-2 text-xs"
+            onClick={onReconnect}
+          >
+            Reconnect
+          </Button>
+        </span>
+      );
+    default: {
+      const exhaustive: never = connectionState;
+      return exhaustive;
+    }
+  }
+}
+
+function LiveMonitorSkeleton() {
+  return (
+    <div className="max-w-2xl mx-auto space-y-4">
+      <Skeleton className="h-8 w-64" />
+      <Skeleton className="h-48 w-full" />
+      <Skeleton className="h-32 w-full" />
+    </div>
+  );
+}
+
+function LiveMonitorWrongState({
+  id,
+  sessionId,
+  session,
+}: {
+  id?: string;
+  sessionId?: string;
+  session: Session;
+}) {
+  const ended = session.status === "ended";
+  return (
+    <div className="max-w-2xl mx-auto">
+      <WrongStateState
+        title={ended ? "This session has ended" : "This session hasn't started yet"}
+        description={
+          ended
+            ? "Live monitoring is only available while an interview is in progress. View the portfolio for the completed results instead."
+            : "Live monitoring will be available once the candidate begins the interview."
+        }
+        backTo={
+          ended
+            ? `/assessments/${id}/sessions/${sessionId}/portfolio`
+            : `/assessments/${id}/invite`
+        }
+        backLabel={ended ? "View portfolio" : "Back to sessions"}
+      />
+    </div>
+  );
+}
+
+interface LiveMonitorContentProps {
+  id?: string;
+  sessionId: string;
+  initialSession: Session;
+  assessmentName: string;
+  initialTranscript: TranscriptTurn[];
+  onViewPortfolio: () => void;
+}
+
+function LiveMonitorContent({
+  id,
+  sessionId,
+  initialSession,
+  assessmentName,
+  initialTranscript,
+  onViewPortfolio,
+}: LiveMonitorContentProps) {
+  const numericSessionId = Number(sessionId);
+  const [transcript, setTranscript] = useState<TranscriptTurn[]>(() =>
+    initialTranscript.slice(-10)
+  );
   const [ending, setEnding] = useState(false);
   const [endError, setEndError] = useState(false);
+  // The session was `active` at fetch time (guaranteed by `isValidState`);
+  // this tracks whether it still is, per the WS's `session_ended` signal.
   const [sessionActive, setSessionActive] = useState(true);
-  const lastTurnRef = useRef<number>(0);
-  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastTurnRef = useRef<number>(
+    initialTranscript.length > 0
+      ? initialTranscript[initialTranscript.length - 1].turn_number
+      : 0
+  );
 
-  const { coverageMap, sessionEnded, sessionEndReason, isConnected } =
-    useCoverageWebSocket(Number(sessionId));
+  // Only mounted while the session is active (see the `<Resource>` wiring in
+  // `LiveMonitorPage`), so this is the only place the coverage WebSocket is
+  // ever constructed — a non-active session never reaches this component.
+  const { coverageMap, sessionEnded, sessionEndReason, connectionState, lastUpdatedAt, reconnect } =
+    useCoverageWebSocket(numericSessionId);
 
   // On session_ended from WS — stop polling, update local state
   useEffect(() => {
     if (sessionEnded) {
       setSessionActive(false);
-      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
     }
   }, [sessionEnded]);
 
-  // Initial load
-  useEffect(() => {
-    Promise.all([
-      sessionsApi.get(Number(sessionId)),
-      sessionsApi.getTranscript(Number(sessionId)),
-    ])
-      .then(([sRes, tRes]) => {
-        const s = sRes.data.session as any;
-        setStartedAt(s.started_at ?? null);
-        setAssessmentName(s.assessment?.name ?? "");
-        if (s.status !== "active") setSessionActive(false);
-
-        const turns = tRes.data.turns;
-        setTranscript(turns.slice(-10));
-        if (turns.length > 0) {
-          lastTurnRef.current = turns[turns.length - 1].turn_number;
-        }
-      })
-      .finally(() => setLoading(false));
-  }, [sessionId]);
-
-  // Poll transcript every 3s while session is active
   const fetchNewTurns = useCallback(async () => {
-    try {
-      const res = await sessionsApi.getTranscript(
-        Number(sessionId),
-        lastTurnRef.current + 1
-      );
-      if (res.data.turns.length > 0) {
-        setTranscript((prev) => [...prev, ...res.data.turns].slice(-10));
-        lastTurnRef.current = res.data.turns[res.data.turns.length - 1].turn_number;
-      }
-    } catch {
-      // transient poll failure — silently skip, retry on next interval
+    const res = await sessionsApi.getTranscript(numericSessionId, lastTurnRef.current + 1);
+    if (res.data.turns.length > 0) {
+      setTranscript((prev) => [...prev, ...res.data.turns].slice(-10));
+      lastTurnRef.current = res.data.turns[res.data.turns.length - 1].turn_number;
     }
-  }, [sessionId]);
+  }, [numericSessionId]);
 
-  useEffect(() => {
-    if (!sessionActive || loading) return;
-    pollTimerRef.current = setInterval(fetchNewTurns, 3000);
-    return () => { if (pollTimerRef.current) clearInterval(pollTimerRef.current); };
-  }, [sessionActive, loading, fetchNewTurns]);
+  const { isStalled: pollingStalled, retry: retryPolling } = usePolling(
+    fetchNewTurns,
+    TRANSCRIPT_POLL_BASE_MS,
+    sessionActive
+  );
 
   const handleEndSession = async () => {
     setEnding(true);
     try {
-      await sessionsApi.endSession(Number(sessionId));
-      navigate(`/assessments/${id}/sessions/${sessionId}/portfolio`);
+      await sessionsApi.endSession(numericSessionId);
+      onViewPortfolio();
     } catch {
       setEnding(false);
       setEndError(true);
     }
   };
-
-  if (loading) {
-    return (
-      <div className="max-w-2xl mx-auto space-y-4">
-        <Skeleton className="h-8 w-64" />
-        <Skeleton className="h-48 w-full" />
-        <Skeleton className="h-32 w-full" />
-      </div>
-    );
-  }
 
   const configuredSkills = coverageMap?.skills ?? [];
   const discoveredSkills = coverageMap?.discovered ?? [];
@@ -157,14 +277,14 @@ export default function LiveMonitorPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          {startedAt && sessionActive && <ElapsedTimer startedAt={startedAt} />}
-          <span className={cn(
-            "flex items-center gap-1 text-xs",
-            isConnected ? "text-green-600" : "text-muted-foreground"
-          )}>
-            <Radio className="h-3 w-3" />
-            {isConnected ? "Live" : "Reconnecting..."}
-          </span>
+          {initialSession.started_at && sessionActive && (
+            <ElapsedTimer startedAt={initialSession.started_at} />
+          )}
+          <ConnectionStatus
+            connectionState={connectionState}
+            lastUpdatedAt={lastUpdatedAt}
+            onReconnect={reconnect}
+          />
         </div>
       </div>
 
@@ -184,7 +304,7 @@ export default function LiveMonitorPage() {
             size="sm"
             variant="outline"
             className="ml-auto"
-            onClick={() => navigate(`/assessments/${id}/sessions/${sessionId}/portfolio`)}
+            onClick={onViewPortfolio}
           >
             View portfolio →
           </Button>
@@ -283,6 +403,18 @@ export default function LiveMonitorPage() {
         </CardContent>
       </Card>
 
+      {/* Transcript polling stalled — repeated failures fetching new turns */}
+      {pollingStalled && (
+        <div className="border border-amber-400/40 rounded-lg p-6 text-center space-y-3">
+          <p className="text-sm text-amber-700">
+            Having trouble fetching new transcript turns. We've stopped retrying automatically.
+          </p>
+          <Button variant="outline" size="sm" onClick={retryPolling}>
+            <RefreshCw className="h-3.5 w-3.5 mr-1.5" /> Retry now
+          </Button>
+        </div>
+      )}
+
       {endError && (
         <div className="border border-destructive/40 rounded-lg p-3 text-sm text-destructive">
           Failed to end session. Please try again.
@@ -312,14 +444,47 @@ export default function LiveMonitorPage() {
             </AlertDialogContent>
           </AlertDialog>
         ) : (
-          <Button
-            variant="outline"
-            onClick={() => navigate(`/assessments/${id}/sessions/${sessionId}/portfolio`)}
-          >
+          <Button variant="outline" onClick={onViewPortfolio}>
             View portfolio →
           </Button>
         )}
       </div>
     </div>
+  );
+}
+
+export default function LiveMonitorPage() {
+  const { id, sessionId } = useParams<{ id: string; sessionId: string }>();
+  const navigate = useNavigate();
+  const numericSessionId = Number(sessionId);
+
+  const fetcher = useCallback(() => fetchLiveMonitorData(numericSessionId), [numericSessionId]);
+  const { resource } = useResource(fetcher);
+
+  const goToPortfolio = useCallback(
+    () => navigate(`/assessments/${id}/sessions/${sessionId}/portfolio`),
+    [navigate, id, sessionId]
+  );
+
+  return (
+    <Resource
+      resource={resource}
+      isValidState={(data) => data.session.status === "active"}
+      loading={<LiveMonitorSkeleton />}
+      wrongState={(data) => (
+        <LiveMonitorWrongState id={id} sessionId={sessionId} session={data.session} />
+      )}
+    >
+      {(data) => (
+        <LiveMonitorContent
+          id={id}
+          sessionId={sessionId!}
+          initialSession={data.session}
+          assessmentName={data.assessmentName}
+          initialTranscript={data.initialTranscript}
+          onViewPortfolio={goToPortfolio}
+        />
+      )}
+    </Resource>
   );
 }
