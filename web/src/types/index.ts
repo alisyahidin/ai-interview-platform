@@ -154,14 +154,12 @@ export interface VacancySkill {
 
 export type SkillComparisonResult = "match" | "gap" | "exceed" | "not_assessed";
 
-// Mirrors `portfolio_skills.assessment_status` (PR2) as surfaced per fit/gap
-// row by #22. `needs_review` behaves like `not_assessed` for comparison
-// purposes today (see `FitGap::Engine#assessed?`) but is kept as its own
-// value rather than collapsed, so the frontend never has to guess which case
-// produced a given row.
-export type AssessmentStatus = "assessed" | "not_assessed" | "needs_review";
-
-export type ConfidenceLevel = "high" | "medium" | "low";
+// `AssessmentStatus`/`ConfidenceLevel` are declared above, next to
+// `PortfolioSkill` — reused here since the fit/gap row (#22) surfaces the
+// same underlying enum values. `needs_review` behaves like `not_assessed`
+// for comparison purposes today (see `FitGap::Engine#assessed?`) but is
+// kept as its own value rather than collapsed, so the frontend never has to
+// guess which case produced a given row.
 
 export interface SkillComparison {
   skill_label: string;
