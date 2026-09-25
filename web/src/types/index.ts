@@ -81,6 +81,14 @@ export interface Portfolio {
   generation_status: "pending" | "generating" | "complete" | "failed";
   generated_at?: string;
   generation_error?: string;
+  /**
+   * Machine-readable reason for a `failed` generation, set by the backend's
+   * failure classifier (ticket #22). `null`/`undefined` covers rows from
+   * before this column existed, or any non-`failed` status — callers must
+   * treat that as "unknown reason" and fall back to generic messaging
+   * rather than crashing (ticket #25).
+   */
+  failure_code?: "upstream_error" | "invalid_output" | "timeout" | "unknown" | null;
   skills: PortfolioSkill[];
   overrides: AssessorOverride[];
 }
