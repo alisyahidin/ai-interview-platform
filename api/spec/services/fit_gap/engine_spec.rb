@@ -83,11 +83,33 @@ RSpec.describe FitGap::Engine do
         create(:portfolio_skill, portfolio: portfolio, skill_label: "Matched Skill", skill_id: "matched", ai_level: 3)
       end
 
-      it "excludes the needs_review skill from the fallback match/gap/exceed counts" do
+      it "excludes the needs_review skill from the firm match/gap/exceed counts" do
         expect(engine.call.reload.overall_narrative).to eq(
-          "Candidate shows 1 skill matches, 0 exceeds, and 0 gaps against role requirements."
+          "Candidate shows 1 skill matches, 0 exceeds, and 0 gaps against role requirements, " \
+          "with 1 skill not assessed in this interview."
         )
       end
+    end
+  end
+
+  describe "#call — fallback narrative counts not-assessed skills honestly (AC12, F33)" do
+    let(:gemini_client) { instance_double(Gemini::HttpClient) }
+
+    before do
+      allow(gemini_client).to receive(:generate_content).and_raise(StandardError, "narrative generation unavailable")
+      add_vacancy_skill(label: "Matched Skill", skill_id: "matched", expected_level: 3)
+      create(:portfolio_skill, portfolio: portfolio, skill_label: "Matched Skill", skill_id: "matched", ai_level: 3)
+      add_vacancy_skill(label: "Unmeasured Skill A", skill_id: "unmeasured-a", expected_level: 4)
+      create(:portfolio_skill, :not_assessed, portfolio: portfolio, skill_label: "Unmeasured Skill A", skill_id: "unmeasured-a")
+      add_vacancy_skill(label: "Unmeasured Skill B", skill_id: "unmeasured-b", expected_level: 2)
+      create(:portfolio_skill, :not_assessed, portfolio: portfolio, skill_label: "Unmeasured Skill B", skill_id: "unmeasured-b")
+    end
+
+    it "names the not-assessed count instead of silently omitting it" do
+      expect(engine.call.reload.overall_narrative).to eq(
+        "Candidate shows 1 skill matches, 0 exceeds, and 0 gaps against role requirements, " \
+        "with 2 skills not assessed in this interview."
+      )
     end
   end
 end
