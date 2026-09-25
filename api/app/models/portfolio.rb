@@ -44,7 +44,31 @@ class Portfolio < ApplicationRecord
   scope :failed,      -> { where(generation_status: 'failed') }
   scope :generating,  -> { where(generation_status: 'generating') }
 
+  # The one construction point for a freshly-ended session's not-yet-run
+  # portfolio. `Sessions::EndHandler` uses this to create the record;
+  # `Portfolios::Generator#call` uses it (via `session.create_portfolio!`
+  # with the same attributes) to lazily create one if `EndHandler` somehow
+  # hasn't already -- keeping both call sites in sync so a future field
+  # addition to "what a pending portfolio looks like" is a one-file change.
+  def self.pending_for(session:)
+    session.portfolio || session.create_portfolio!(
+      candidate_id:      session.candidate_id,
+      generation_status: 'pending',
+      tenant_id:         session.tenant_id
+    )
+  end
+
   def complete?    = generation_status == 'complete'
   def generating?  = generation_status == 'generating'
   def failed?      = generation_status == 'failed'
+
+  # The raw Gemini model-name string stored in the `model_name` column
+  # (PR2/#6: which model produced this portfolio's scores). Named
+  # deliberately instead of `.model_name`: that instance method is
+  # restored to ActiveModel::Naming's normal delegate (see the comment
+  # above `instance_method_already_implemented?`), so it returns this
+  # class's `ActiveModel::Name`, not the stored string.
+  def gemini_model_name
+    self[:model_name]
+  end
 end

@@ -56,13 +56,7 @@ module Sessions
 
     def create_portfolio
       # Idempotent — only create if one doesn't exist yet
-      return if @session.portfolio.present?
-
-      @session.create_portfolio!(
-        candidate_id:      @session.candidate_id,
-        generation_status: 'pending',
-        tenant_id:         @session.tenant_id
-      )
+      Portfolio.pending_for(session: @session)
     end
 
     def enqueue_portfolio_generation

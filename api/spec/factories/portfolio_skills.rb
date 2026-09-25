@@ -24,10 +24,13 @@ FactoryBot.define do
 
     # Coverage said `not_yet` but the model scored it anyway — the level is
     # kept (not discarded), but the skill is flagged for human review and
-    # excluded from fit/gap counts downstream.
+    # excluded from fit/gap counts downstream. Per LevelNormalizer's
+    # contract, a freshly-generated needs_review result always has
+    # `status_reason: nil` -- `legacy_unverified` is reserved for the
+    # one-time migration backfill (ticket #6), a different scenario.
     trait :needs_review do
       assessment_status { "needs_review" }
-      status_reason { "legacy_unverified" }
+      status_reason { nil }
     end
   end
 end
