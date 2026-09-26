@@ -26,10 +26,10 @@ export const SESSION_PRESENTATION_LABELS: Record<SessionPresentation, string> = 
  * Single source of truth for the label a Session is presented with, derived
  * from the two fields the sessions-index response actually returns.
  *
- * "Failed" is a presentation, not a fourth state: the backend's status
+ * "Failed" is a presentation, not a fourth state: the backend's `status`
  * enumeration contains a `failed` value that nothing ever writes — errors are
  * recorded as an ended Session carrying the error end reason — so the
- * frontend must not model, read, or display a fourth status. Deriving the
+ * frontend must not model, read, or display a fourth state. Deriving the
  * label instead is the point (ADR-0002).
  */
 export function sessionPresentation(session: StateBearingSession): SessionPresentation {

@@ -13,8 +13,8 @@ import {
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import { cn } from "@/lib/utils";
-import { sessionPresentation } from "@/utils/sessionStatus";
-import SessionStatusPill from "./SessionStatusPill";
+import { sessionPresentation } from "@/utils/sessionState";
+import SessionStatePill from "./SessionStatePill";
 import type { Session } from "@/types";
 
 const STARTED_DATE = new Intl.DateTimeFormat("en-US", {
@@ -54,7 +54,8 @@ function SessionRow({
     highlighted,
 }: {
     session: Session;
-    position: number;
+    /** The row's rank in the cohort, or `null` when the cohort does not hold it. */
+    position: number | null;
     assessmentId: string;
     onCopy: (session: Session) => void;
     copiedId: number | null;
@@ -76,16 +77,23 @@ function SessionRow({
                     highlighted ? "border-primary" : "border-transparent",
                 )}
             >
-                {position}
+                {position ?? "—"}
             </TableCell>
             <TableCell className="max-w-[240px] px-4 py-2.5">
                 <TruncatedText
                     className="min-w-0"
-                    text={session.candidate_name || `Candidate ${position}`}
+                    // The fallback name carries the same position the index column
+                    // shows, so the two never name a different candidate — and a
+                    // row the cohort does not account for is left bare rather than
+                    // numbered with a position it does not hold.
+                    text={
+                        session.candidate_name ||
+                        (position === null ? "Candidate" : `Candidate ${position}`)
+                    }
                 />
             </TableCell>
             <TableCell className="px-4 py-2.5">
-                <SessionStatusPill session={session} />
+                <SessionStatePill session={session} />
             </TableCell>
             <TableCell className="px-4 py-2.5">
                 {started ? (
@@ -175,10 +183,18 @@ function SessionRow({
 
 interface SessionTableProps {
     /**
-     * Every Session the Assessment has, before any narrowing. It is the source
-     * of both numbers the table states — how many candidates there are, and what
-     * position each row holds — so the two cannot come from different lists and
-     * disagree. `sessions` is always a subset of it.
+     * Every Session the Assessment has, before any narrowing, in the order the
+     * rows are rendered — the API's own order, newest invite first. It is the
+     * source of both numbers the table states — how many candidates there are,
+     * and what position each row holds — so the two cannot come from different
+     * lists and disagree.
+     *
+     * The order is part of the contract, not an accident of how the list
+     * arrives: a position is a rank within this array, so a `cohort` in any
+     * other order numbers the rows wrongly rather than failing. Passing a
+     * subset, a reordered list, or a list the rows are not drawn from is a
+     * caller error. Rows that `cohort` does not account for degrade to a dash,
+     * never to a wrong number, and `SessionTable.test.tsx` pins that.
      */
     cohort: Session[];
     /** The sessions to show, already narrowed by the filter and search layer. */
@@ -209,6 +225,12 @@ export default function SessionTable({
     // after, which is the opposite of being able to say the number out loud. The
     // newest invite takes the highest number, so an arriving invite does not
     // renumber everyone below it either.
+    //
+    // A rank is a claim about this array's order, which is why `cohort` is
+    // documented as ordered rather than merely as complete. A row the map misses
+    // has no rank to report, and `get` says so with `null` instead of an
+    // assertion: an invented number here would name the wrong candidate, which is
+    // the one failure this whole scheme exists to prevent.
     const positions = useMemo(() => {
         const bySessionId = new Map<number, number>();
         cohort.forEach((session, i) => bySessionId.set(session.id, cohort.length - i));
@@ -275,9 +297,7 @@ export default function SessionTable({
                                 <SessionRow
                                     key={session.id}
                                     session={session}
-                                    // `sessions` is narrowed out of `cohort`, so every row is in
-                                    // it; the assertion is the invariant made visible.
-                                    position={positions.get(session.id)!}
+                                    position={positions.get(session.id) ?? null}
                                     assessmentId={assessmentId}
                                     onCopy={onCopy}
                                     copiedId={copiedId}

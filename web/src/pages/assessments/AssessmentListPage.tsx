@@ -27,7 +27,7 @@ function SessionSummary({
 }) {
     if (!session) return null;
 
-    const statusText = (() => {
+    const stateText = (() => {
         if (session.status === "active")
             return (
                 <span className="flex items-center gap-1 text-xs text-primary">
@@ -71,7 +71,7 @@ function SessionSummary({
     // whether it ultimately succeeded, failed, or is still active/pending.
     return (
         <span className="flex items-center gap-1.5">
-            {statusText}
+            {stateText}
             {session.connectivity_advisory_acknowledged && (
                 <span className="text-xs text-amber-600">
                     ⚠ Candidate continued on a weak connection

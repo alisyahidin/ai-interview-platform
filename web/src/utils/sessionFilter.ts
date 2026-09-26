@@ -3,13 +3,13 @@ import {
     sessionPresentation,
     type SessionPresentation,
     type StateBearingSession,
-} from "@/utils/sessionStatus";
+} from "@/utils/sessionState";
 
 /**
- * What the candidate list can be narrowed to: the four presented statuses, plus
- * the absence of a narrowing. Keyed off the presentation rather than off raw
- * status, so a `failed` filter reaches the ended sessions carrying the error
- * end reason without anything here knowing what an end reason is.
+ * What the candidate list can be narrowed to: the four presented states, plus
+ * the absence of a narrowing. Keyed off the presentation rather than off the
+ * raw `status` field, so a `failed` filter reaches the ended sessions carrying
+ * the error end reason without anything here knowing what an end reason is.
  */
 export type SessionFilter = "all" | SessionPresentation;
 

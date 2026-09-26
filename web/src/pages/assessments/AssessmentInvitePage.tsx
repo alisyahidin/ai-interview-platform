@@ -17,7 +17,7 @@ import PollingStalledBanner from "@/components/resource/PollingStalledBanner";
 import SessionTable from "@/components/sessions/SessionTable";
 import SessionSummary from "@/components/sessions/SessionSummary";
 import { LEVEL_LABELS } from "@/utils/constants";
-import { sessionPresentation } from "@/utils/sessionStatus";
+import { sessionPresentation } from "@/utils/sessionState";
 import { countByPresentation, filterSessions, type SessionFilter } from "@/utils/sessionFilter";
 import { ArrowLeft, Pencil, Plus } from "lucide-react";
 import type { Assessment, Session } from "@/types";
@@ -34,7 +34,7 @@ export default function AssessmentInvitePage() {
     const [candidateNameInput, setCandidateNameInput] = useState("");
     // The one selection the summary layer's cards and tabs both write, so the
     // two cannot end up describing different tables.
-    const [statusFilter, setStatusFilter] = useState<SessionFilter>("all");
+    const [stateFilter, setStateFilter] = useState<SessionFilter>("all");
     const [query, setQuery] = useState("");
     const [freshSessionId, setFreshSessionId] = useState<number | null>(null);
 
@@ -89,8 +89,8 @@ export default function AssessmentInvitePage() {
     // current view of it.
     const counts = useMemo(() => countByPresentation(sessions), [sessions]);
     const visibleSessions = useMemo(
-        () => filterSessions(sessions, statusFilter, query),
-        [sessions, statusFilter, query],
+        () => filterSessions(sessions, stateFilter, query),
+        [sessions, stateFilter, query],
     );
 
     // The fresh-invite highlight reads the polled list rather than a clock: it
@@ -208,7 +208,7 @@ export default function AssessmentInvitePage() {
                 </DialogContent>
             </Dialog>
 
-            {/* Polling stalled — repeated failures refreshing candidate status */}
+            {/* Polling stalled — repeated failures refreshing the candidate list */}
             {pollingStalled && <PollingStalledBanner onRetry={retryPolling} />}
 
             {/* Summary layer — what the cohort looks like, and the two ways of
@@ -216,8 +216,8 @@ export default function AssessmentInvitePage() {
           the same table. */}
             <SessionSummary
                 counts={counts}
-                filter={statusFilter}
-                onFilterChange={setStatusFilter}
+                filter={stateFilter}
+                onFilterChange={setStateFilter}
                 query={query}
                 onQueryChange={setQuery}
             />

@@ -166,8 +166,8 @@ async function renderWithSessions(sessions: Session[]) {
     return view;
 }
 
-// The status vocabulary now appears in two places on the page: on the pill in a
-// row, and on the card and tab that count and filter by that status. These
+// The state vocabulary now appears in two places on the page: on the pill in a
+// row, and on the card and tab that count and filter by that state. These
 // cases are about the pill, so they look inside the table rather than at the
 // page — the same assertion, aimed at the row.
 function pills() {
@@ -266,12 +266,21 @@ describe("AssessmentInvitePage session state pills", () => {
     });
 
     it("reads only fields the generated sessions-index payload actually sends", () => {
-        // F8 was the frontend reading a response key the backend never sent. The
-        // API is allowed to send more than the type models; it is not allowed to
-        // send less, so this asserts the generated payload is a superset of every
-        // declared field. `ALL_SESSION_FIELDS` is the compiler's list, so a field
-        // added to `Session` without the API sending it fails here rather than at
-        // runtime, and a field dropped from the API fails here too.
+        // F8 was the frontend reading a response key the backend never sent, so
+        // this guard runs in the one direction that bug needs: every key `Session`
+        // declares must be a key the generated payload sends. A field added to
+        // the type without the serializer sending it fails here, at `pnpm test`,
+        // rather than arriving at runtime as an `undefined`.
+        //
+        // The guard is deliberately one-way, and that is not a gap in it. The
+        // serializer legitimately sends fields the frontend does not model —
+        // `consent_given_at` is one, and so is
+        // `connectivity_advisory_acknowledged` — so the payload is allowed to
+        // be a strict superset of the type. Asserting the reverse would fail on
+        // a field *added* to the API, which is not the contract violation
+        // ADR-0002 exists to catch: it is the serializer moving ahead of a
+        // frontend that has no use for the field yet. Modelling such a field is
+        // a deliberate act, and the fixture's regen diff is where that shows up.
         const declared = Object.keys({} as { [K in keyof Required<Session>]: true });
         expect(declared.filter((key) => !(key in CONTRACT_SESSIONS[0]))).toEqual([]);
     });

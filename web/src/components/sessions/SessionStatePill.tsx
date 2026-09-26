@@ -4,7 +4,7 @@ import {
     SESSION_PRESENTATION_LABELS,
     type SessionPresentation,
     type StateBearingSession,
-} from "@/utils/sessionStatus";
+} from "@/utils/sessionState";
 
 /**
  * Light-mode Tailwind palette pairs, deliberately NOT the judgment colour
@@ -29,7 +29,7 @@ const PRESENTATION: Record<SessionPresentation, { className: string; pulse?: boo
     },
 };
 
-export default function SessionStatusPill({
+export default function SessionStatePill({
     session,
     className,
 }: {
