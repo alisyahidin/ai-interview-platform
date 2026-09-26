@@ -12,7 +12,10 @@
           "expected_level": 4,
           "result": "gap",
           "delta": -1,
-          "confidence": "medium"
+          "confidence": "medium",
+          "is_override": false,
+          "original_level": null,
+          "assessment_status": "assessed"
         },
         {
           "skill_label": "System Design",
@@ -21,7 +24,10 @@
           "expected_level": 3,
           "result": "not_assessed",
           "delta": null,
-          "confidence": null
+          "confidence": null,
+          "is_override": false,
+          "original_level": null,
+          "assessment_status": "not_assessed"
         }
       ],
       "culture_narrative": "Sample culture narrative.",

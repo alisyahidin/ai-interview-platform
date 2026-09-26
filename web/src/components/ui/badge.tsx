@@ -14,6 +14,19 @@ const badgeVariants = cva(
                 destructive:
                     "border-transparent bg-destructive text-destructive-foreground shadow hover:bg-destructive/80",
                 outline: "text-foreground",
+                // Phase 3b (#23) judgment states — F43: the canonical variant
+                // surface for skill-assessment badges, replacing the old
+                // hand-rolled LEVEL_BADGE_CLASSES lookup. Each is styled by
+                // shape (solid fill / outline / dashed) AND paired with an
+                // icon + text at the call site, so no state is colour-only.
+                assessed:
+                    "border-transparent bg-judgment-assessedBg text-judgment-assessedFg",
+                tentative:
+                    "border-2 border-judgment-tentativeBorder bg-transparent text-judgment-tentativeFg",
+                notAssessed:
+                    "border border-dashed border-judgment-neutralBorder bg-judgment-neutralBg text-judgment-neutralFg",
+                needsReview:
+                    "border border-judgment-reviewBorder bg-judgment-reviewBg text-judgment-reviewFg hover:bg-judgment-reviewBg/70",
             },
         },
         defaultVariants: {

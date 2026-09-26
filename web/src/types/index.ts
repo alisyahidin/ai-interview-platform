@@ -74,6 +74,12 @@ export interface TranscriptTurn {
   created_at: string;
 }
 
+// Machine-readable reason for a portfolio's `failed` generation, set by the
+// backend's failure classifier (ticket #22). Named here so both the
+// `Portfolio` type and any page-level copy lookup (e.g. `PortfolioPage`'s
+// `FAILURE_COPY`) share one definition instead of redeclaring the union.
+export type FailureCode = "upstream_error" | "invalid_output" | "timeout" | "unknown";
+
 export interface Portfolio {
   id: number;
   session_id: number;
@@ -81,17 +87,42 @@ export interface Portfolio {
   generation_status: "pending" | "generating" | "complete" | "failed";
   generated_at?: string;
   generation_error?: string;
+  /**
+   * `null`/`undefined` covers rows from before this column existed, or any
+   * non-`failed` status — callers must treat that as "unknown reason" and
+   * fall back to generic messaging rather than crashing (ticket #25).
+   */
+  failure_code?: FailureCode | null;
   skills: PortfolioSkill[];
   overrides: AssessorOverride[];
 }
 
+// Phase 3b (#23): the three mutually-exclusive base states a skill's
+// judgment can be in, plus `needs_review` — which in the underlying data is
+// its own `assessment_status` value, but always carries a real `ai_level`
+// (see api/app/services/portfolios/level_normalizer.rb) and is presented as
+// an orthogonal flag layered on top of the assessed/tentative base state,
+// not a fourth visual state.
+export type AssessmentStatus = "assessed" | "not_assessed" | "needs_review";
+
+// Why a portfolio skill ended up `not_assessed`. `nil` covers the plain
+// "the model returned no measurable level" case (distinct from omission).
+export type StatusReason = "omitted_by_model" | "invalid_model_output" | null;
+
+export type ConfidenceLevel = "high" | "medium" | "low";
+
 export interface PortfolioSkill {
   id: number;
-  skill_id?: number;
+  skill_id?: number | string;
   skill_label: string;
   is_discovered: boolean;
-  ai_level: string;       // "L1" | "L2" | "L3" | "L4" | "L5"
-  ai_confidence: string;  // "high" | "medium" | "low"
+  // Nullable: `not_assessed` skills never have a level. `ai_level` may still
+  // arrive as a "L3"-style string from older fixtures/tests; components
+  // normalize via `parseLevel`.
+  ai_level: number | string | null;
+  ai_confidence: ConfidenceLevel;
+  assessment_status: AssessmentStatus;
+  status_reason?: StatusReason;
   evidence: string[];
   competency_summary: string;
 }
@@ -127,13 +158,31 @@ export interface VacancySkill {
 
 export type SkillComparisonResult = "match" | "gap" | "exceed" | "not_assessed";
 
+// `AssessmentStatus`/`ConfidenceLevel` are declared above, next to
+// `PortfolioSkill` — reused here since the fit/gap row (#22) surfaces the
+// same underlying enum values. `needs_review` behaves like `not_assessed`
+// for comparison purposes today (see `FitGap::Engine#assessed?`) but is
+// kept as its own value rather than collapsed, so the frontend never has to
+// guess which case produced a given row.
+
 export interface SkillComparison {
   skill_label: string;
-  required_level: number;
-  candidate_level?: number;
+  skill_id?: string;
+  // The vacancy's required level for this skill. Was mis-typed/mis-read as
+  // `required_level` — a key the backend has never sent (F8) — renamed to
+  // match the actual `FitGap::Engine#build_skill_comparisons` response.
+  expected_level: number;
+  candidate_level?: number | null;
   result: SkillComparisonResult;
-  delta?: number;
+  delta?: number | null;
+  confidence?: ConfidenceLevel | null;
+  // Added by #22: whether an assessor override is applied on top of the AI
+  // level, the AI's pre-override level, and the underlying skill's real
+  // assessment status. All optional here because a backend that hasn't
+  // shipped #22 yet simply omits them.
   is_override?: boolean;
+  original_level?: number | null;
+  assessment_status?: AssessmentStatus;
 }
 
 export interface FitGapReport {

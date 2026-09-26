@@ -7,6 +7,7 @@
       "generation_status": "complete",
       "generated_at": "2026-01-01T00:00:00.000Z",
       "generation_error": null,
+      "failure_code": null,
       "skills": [
         {
           "id": 1,
@@ -18,7 +19,9 @@
           "evidence": [
             "Discussed background job design under load."
           ],
-          "competency_summary": "Solid working knowledge, some gaps under scale."
+          "competency_summary": "Solid working knowledge, some gaps under scale.",
+          "assessment_status": "assessed",
+          "status_reason": null
         },
         {
           "id": 1,
@@ -30,7 +33,9 @@
           "evidence": [
             "Discussed background job design under load."
           ],
-          "competency_summary": "Solid working knowledge, some gaps under scale."
+          "competency_summary": "Solid working knowledge, some gaps under scale.",
+          "assessment_status": "assessed",
+          "status_reason": null
         }
       ],
       "overrides": []

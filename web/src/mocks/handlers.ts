@@ -10,4 +10,20 @@ const API_BASE = "http://localhost:3001/api/v1";
 // of silently drifting from what the frontend assumes.
 export const handlers = [
     http.get(`${API_BASE}/health`, () => HttpResponse.json({ data: { status: "ok" } })),
+    // Default vacancy lookup so pages that display a vacancy's role title
+    // (e.g. FitGapReportPage, AC39) don't need every test to stub this out
+    // individually — override with `server.use(...)` for specific payloads.
+    http.get(`${API_BASE}/vacancies/:id`, ({ params }) =>
+        HttpResponse.json({
+            data: {
+                vacancy: {
+                    id: Number(params.id),
+                    role_title: "Sample Role",
+                    culture_dimensions: "",
+                    competency_expectations: "",
+                    skills: [],
+                },
+            },
+        })
+    ),
 ];
