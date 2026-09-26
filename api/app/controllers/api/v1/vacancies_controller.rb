@@ -28,6 +28,12 @@ module Api
         vacancy.created_by = current_user.id
 
         if vacancy.save
+          # `public_id` is a DB-generated default (`gen_random_uuid()`) --
+          # this Rails/adapter combination doesn't read generated column
+          # defaults back via INSERT ... RETURNING, so the in-memory record
+          # needs an explicit reload or its response would carry a nil
+          # public_id right after creation (#40).
+          vacancy.reload
           json_response({ vacancy: vacancy_with_skills_json(vacancy) }, :created)
         else
           json_error(vacancy.errors.full_messages.first, :unprocessable_entity)
@@ -52,7 +58,7 @@ module Api
       private
 
       def set_vacancy
-        @vacancy = Vacancy.find(params[:id])
+        @vacancy = Vacancy.find_by_public_id!(params[:public_id])
       rescue ActiveRecord::RecordNotFound
         json_error("Vacancy not found", :not_found)
       end
@@ -70,7 +76,7 @@ module Api
 
       def vacancy_json(vacancy)
         {
-          id:                       vacancy.id,
+          public_id:                vacancy.public_id,
           role_title:               vacancy.role_title,
           culture_dimensions:       vacancy.culture_dimensions,
           competency_expectations:  vacancy.competency_expectations,

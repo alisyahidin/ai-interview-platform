@@ -202,9 +202,9 @@ export default function AssessmentListPage() {
         <div className="space-y-2">
           {assessments.map((a) => (
             <Card
-              key={a.id}
+              key={a.public_id}
               className="cursor-pointer hover:border-primary/40 transition-colors"
-              onClick={() => navigate(`/assessments/${a.id}/invite`)}
+              onClick={() => navigate(`/assessments/${a.public_id}/invite`)}
             >
               <CardContent className="py-3 px-4 flex items-center justify-between">
                 <div>

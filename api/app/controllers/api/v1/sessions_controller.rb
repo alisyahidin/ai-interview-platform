@@ -13,9 +13,9 @@ module Api
       before_action :set_candidate_session, only: %i[candidate_info acknowledge_consent
                                                        acknowledge_connectivity_advisory]
 
-      # GET /api/v1/assessments/:assessment_id/sessions
+      # GET /api/v1/assessments/:assessment_public_id/sessions
       def index
-        assessment = Assessment.find(params[:assessment_id])
+        assessment = Assessment.find_by_public_id!(params[:assessment_public_id])
         sessions = assessment.sessions.order(created_at: :desc)
 
         json_response(sessions: sessions.map(&method(:session_json)))
@@ -28,16 +28,16 @@ module Api
         json_response(
           session: session_json(@session).merge(
             assessment: {
-              id:             @session.assessment.id,
+              public_id:      @session.assessment.public_id,
               name:           @session.assessment.name,
               time_limit_min: @session.assessment.time_limit_min
             }
           )
         )
       end
-      # POST /api/v1/assessments/:assessment_id/sessions
+      # POST /api/v1/assessments/:assessment_public_id/sessions
       def create
-        assessment = Assessment.find(params[:assessment_id])
+        assessment = Assessment.find_by_public_id!(params[:assessment_public_id])
 
         session = assessment.sessions.new(
           candidate_id:   params.dig(:session, :candidate_id),

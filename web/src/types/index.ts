@@ -1,5 +1,7 @@
 export interface Assessment {
-  id: number;
+  // Issue #40: assessments are addressed by `public_id` end to end -- the
+  // sequential `id` is never sent by the backend for this resource type.
+  public_id: string;
   name: string;
   time_limit_min: number;
   language?: "en" | "id";
@@ -140,7 +142,9 @@ export interface AssessorOverride {
 }
 
 export interface Vacancy {
-  id: number;
+  // Issue #40: vacancies are addressed by `public_id` end to end -- the
+  // sequential `id` is never sent by the backend for this resource type.
+  public_id: string;
   role_title: string;
   culture_dimensions: string;
   competency_expectations: string;

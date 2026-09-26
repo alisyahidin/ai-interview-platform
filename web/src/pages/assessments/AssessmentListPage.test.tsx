@@ -6,6 +6,14 @@ import { http, HttpResponse } from "msw";
 import { server } from "@/mocks/server";
 import AssessmentListPage from "./AssessmentListPage";
 
+// Ticket #40: assessments are addressed by `public_id` (a UUID) end to end —
+// the sequential `id` no longer appears in the response body, and every
+// link this page builds (the row → invite-page navigation) must use it.
+const PUBLIC_ID_1 = "44444444-4444-4444-8444-444444444441";
+const PUBLIC_ID_2 = "44444444-4444-4444-8444-444444444442";
+const PUBLIC_ID_3 = "44444444-4444-4444-8444-444444444443";
+const PUBLIC_ID_4 = "44444444-4444-4444-8444-444444444444";
+
 // Ticket #33 (AC33): a re-invite action on a failed session's row, and none
 // on active/successfully-completed ones. MSW-backed, following the pattern
 // established in AssessmentInvitePage.test.tsx.
@@ -42,21 +50,21 @@ function mockAssessmentsList(assessments: unknown[]) {
 }
 
 const failedAssessment = {
-  id: 1,
+  public_id: PUBLIC_ID_1,
   name: "Backend Engineer",
   time_limit_min: 45,
   latest_session: { id: 100, status: "ended", end_reason: "error" },
 };
 
 const activeAssessment = {
-  id: 2,
+  public_id: PUBLIC_ID_2,
   name: "Frontend Engineer",
   time_limit_min: 30,
   latest_session: { id: 200, status: "active", end_reason: null },
 };
 
 const completedAssessment = {
-  id: 3,
+  public_id: PUBLIC_ID_3,
   name: "QA Engineer",
   time_limit_min: 60,
   latest_session: { id: 300, status: "ended", end_reason: "all_covered" },
@@ -164,7 +172,7 @@ describe("AssessmentListPage connectivity advisory note", () => {
   it("shows the inline note when the latest session acknowledged a connectivity advisory", async () => {
     mockAssessmentsList([
       {
-        id: 1,
+        public_id: PUBLIC_ID_1,
         name: "Backend Engineer",
         time_limit_min: 45,
         latest_session: {
@@ -185,7 +193,7 @@ describe("AssessmentListPage connectivity advisory note", () => {
   it("does not show the note when the field is null", async () => {
     mockAssessmentsList([
       {
-        id: 2,
+        public_id: PUBLIC_ID_2,
         name: "Frontend Engineer",
         time_limit_min: 30,
         latest_session: {
@@ -206,7 +214,7 @@ describe("AssessmentListPage connectivity advisory note", () => {
   it("still shows the note on a failed session (not gated to any one status)", async () => {
     mockAssessmentsList([
       {
-        id: 3,
+        public_id: PUBLIC_ID_3,
         name: "QA Engineer",
         time_limit_min: 60,
         latest_session: {
@@ -227,7 +235,7 @@ describe("AssessmentListPage connectivity advisory note", () => {
   it("still shows the note on a successfully completed session", async () => {
     mockAssessmentsList([
       {
-        id: 4,
+        public_id: PUBLIC_ID_4,
         name: "Data Engineer",
         time_limit_min: 60,
         latest_session: {
@@ -243,5 +251,32 @@ describe("AssessmentListPage connectivity advisory note", () => {
 
     await waitFor(() => expect(screen.getByText("Last: completed")).toBeInTheDocument());
     expect(screen.getByText(NOTE_TEXT)).toBeInTheDocument();
+  });
+});
+
+describe("AssessmentListPage public_id routing (#40)", () => {
+  beforeEach(() => {
+    server.resetHandlers();
+  });
+
+  it("links each row to the invite page by public_id, not sequential id", async () => {
+    const user = userEvent.setup();
+    mockAssessmentsList([activeAssessment]);
+
+    render(
+      <MemoryRouter initialEntries={["/assessments"]}>
+        <Routes>
+          <Route path="/assessments" element={<AssessmentListPage />} />
+          <Route path="/assessments/:id/invite" element={<div>Invite page for {PUBLIC_ID_2}</div>} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getByText("Frontend Engineer")).toBeInTheDocument());
+    await user.click(screen.getByText("Frontend Engineer"));
+
+    await waitFor(() =>
+      expect(screen.getByText(`Invite page for ${PUBLIC_ID_2}`)).toBeInTheDocument()
+    );
   });
 });

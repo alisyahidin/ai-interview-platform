@@ -14,14 +14,14 @@ export const vacanciesApi = {
       params: { page },
     }),
 
-  get: (id: number) =>
-    api.get<{ vacancy: Vacancy }>(`/vacancies/${id}`),
+  get: (publicId: string) =>
+    api.get<{ vacancy: Vacancy }>(`/vacancies/${publicId}`),
 
   create: (data: VacancyPayload) =>
     api.post<{ vacancy: Vacancy }>("/vacancies", { vacancy: data }),
 
-  update: (id: number, data: VacancyPayload) =>
-    api.put<{ vacancy: Vacancy }>(`/vacancies/${id}`, { vacancy: data }),
+  update: (publicId: string, data: VacancyPayload) =>
+    api.put<{ vacancy: Vacancy }>(`/vacancies/${publicId}`, { vacancy: data }),
 
-  delete: (id: number) => api.delete(`/vacancies/${id}`),
+  delete: (publicId: string) => api.delete(`/vacancies/${publicId}`),
 };

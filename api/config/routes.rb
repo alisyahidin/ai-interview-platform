@@ -18,7 +18,7 @@ Rails.application.routes.draw do
       }
 
       # Assessments
-      resources :assessments do
+      resources :assessments, param: :public_id do
         resources :sessions, only: %i[index create]
       end
 
@@ -52,7 +52,7 @@ Rails.application.routes.draw do
       get  'skill_taxonomies/:skill_id', to: 'skill_taxonomies#show', as: :skill_taxonomy
 
       # Vacancies
-      resources :vacancies
+      resources :vacancies, param: :public_id
 
       # Portfolios — fit/gap and export
       resources :portfolios, only: [] do

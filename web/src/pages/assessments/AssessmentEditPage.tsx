@@ -46,7 +46,7 @@ export default function AssessmentEditPage() {
   const { register, handleSubmit, control, setValue, reset, formState: { errors } } = form;
   const { fields, append, remove, move } = useFieldArray({ control, name: "skills" });
 
-  const fetchAssessment = useCallback(() => assessmentsApi.get(Number(id)), [id]);
+  const fetchAssessment = useCallback(() => assessmentsApi.get(id!), [id]);
   const { resource } = useResource(fetchAssessment);
 
   useEffect(() => {
@@ -74,7 +74,7 @@ export default function AssessmentEditPage() {
     setError(null);
     setSubmitting(true);
     try {
-      await assessmentsApi.update(Number(id), {
+      await assessmentsApi.update(id!, {
         name: data.name,
         time_limit_min: data.time_limit_min,
         assessment_skills_attributes: data.skills.map((s, i) => ({ ...s, display_order: i })),
