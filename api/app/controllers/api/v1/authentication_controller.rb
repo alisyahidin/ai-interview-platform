@@ -19,6 +19,27 @@ module Api
         json_response({ token:, user: { id: user.id, email: user.email, role: user.role } })
       end
 
+      # POST /api/v1/auth/register
+      #
+      # #38: creates an account from an invitation token. Does not log the
+      # new user in -- on success the frontend sends them to the login page
+      # separately, matching the login page's "who this is for" framing
+      # rather than blurring registration and login into one endpoint.
+      #
+      # Any `role` the caller submits is ignored entirely -- see
+      # Auth::Registration, which never reads it.
+      def register
+        result = Auth::Registration.call(
+          email:            params[:email],
+          password:         params[:password],
+          invitation_token: params[:invitation_token]
+        )
+
+        return json_error(result.error, :unprocessable_entity) unless result.success?
+
+        json_response({ message: 'Registration successful. You can now log in.' }, :created)
+      end
+
       private
 
       def resolve_scheme
