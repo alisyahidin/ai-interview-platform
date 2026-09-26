@@ -4,6 +4,11 @@ export enum ProctoringState {
     WAITING = "waiting",
     LOADING = "loading",
     PASSED = "passed",
+    // Ticket #30 (F10/D4): an advisory, non-blocking failure — distinct from
+    // ERROR. Only the connectivity step ever enters this state (falling
+    // below the speed/ping threshold no longer hard-blocks progress; it
+    // shows a warning with an informed "continue anyway" override instead).
+    WARNING = "warning",
     ERROR = "error",
 }
 
@@ -47,20 +52,63 @@ export function getOSInfo() {
     return os;
 }
 
-export async function checkCamera(): Promise<MediaStream | null> {
-    try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-                width: { max: 640 },
-                height: { max: 480 },
-                frameRate: { max: 20 },
-                facingMode: "user",
-            },
-            audio: true,
-        });
-        return stream;
-    } catch {
-        return null;
+// Ticket #30 (F12): the request itself must stay a direct, uncaught
+// `getUserMedia` call so the browser actually shows a real permission
+// prompt — swallowing the rejection here (the old behavior) meant the
+// caller never saw *why* it failed, only that it did. Callers that need to
+// classify the failure (see `classifyMicrophoneError` below) catch this
+// themselves; callers that don't care can still `.catch(() => null)` it.
+export async function checkCamera(): Promise<MediaStream> {
+    return navigator.mediaDevices.getUserMedia({
+        video: {
+            width: { max: 640 },
+            height: { max: 480 },
+            frameRate: { max: 20 },
+            facingMode: "user",
+        },
+        audio: true,
+    });
+}
+
+/**
+ * Distinct microphone-failure causes (F12), classified from the real
+ * `DOMException.name` `getUserMedia` rejects with — never collapsed into one
+ * generic error:
+ *   - "no_device": no microphone connected (`NotFoundError`/`OverconstrainedError`).
+ *   - "permission_denied": the browser/OS blocked access
+ *     (`NotAllowedError`/`PermissionDeniedError`, the latter being older
+ *     Safari/Firefox naming for the same thing).
+ *   - "device_busy": another application is already holding the device
+ *     (`NotReadableError`/`TrackStartError`, same distinction, older naming).
+ *   - "unknown": anything else (e.g. `AbortError`, a non-DOMException throw) —
+ *     falls back to a generic message rather than guessing.
+ */
+export type MicrophoneFailureReason =
+    | "no_device"
+    | "permission_denied"
+    | "device_busy"
+    | "unknown";
+
+export function classifyMicrophoneError(error: unknown): MicrophoneFailureReason {
+    const name =
+        error instanceof DOMException
+            ? error.name
+            : typeof error === "object" && error !== null && "name" in error
+                ? String((error as { name?: unknown }).name)
+                : undefined;
+
+    switch (name) {
+        case "NotFoundError":
+        case "OverconstrainedError":
+            return "no_device";
+        case "NotAllowedError":
+        case "PermissionDeniedError":
+            return "permission_denied";
+        case "NotReadableError":
+        case "TrackStartError":
+            return "device_busy";
+        default:
+            return "unknown";
     }
 }
 
