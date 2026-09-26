@@ -11,7 +11,7 @@ module Api
       # Auth::Authentication. The role/permission distinction is enforced at
       # each controller's `authorize_auth_token!` call site, not at login.
       def authenticate
-        result = Auth::Authentication.new(email: params[:email], password: params[:password]).call
+        result = Auth::Authentication.call(email: params[:email], password: params[:password])
 
         return json_error(result.error, :unauthorized) unless result.success?
 
