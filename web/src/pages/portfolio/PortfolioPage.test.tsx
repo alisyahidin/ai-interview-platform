@@ -183,6 +183,83 @@ describe("PortfolioPage", () => {
   });
 });
 
+// Regression guard for the bug this ticket fixes: #40 stopped exposing
+// Vacancy's raw sequential id anywhere -- the vacancy `<Select>` here only
+// ever had `public_id` (a UUID-shaped string) to offer -- but this page's
+// export call ran the selected value through `Number(...)` regardless,
+// producing `NaN`. These specs prove the actual export request carries the
+// selected vacancy's public_id string verbatim.
+describe("PortfolioPage vacancy export request shape", () => {
+  const VACANCY_PUBLIC_ID = "vacancy-public-42";
+
+  beforeEach(() => {
+    retryMock.mockClear();
+    pollingResult = { isStalled: false, retry: retryMock, failureCount: 0, intervalMs: 5000 };
+    capturedPollFn = null;
+
+    mockSession({ status: "ended", end_reason: "completed" });
+    server.use(
+      http.get(`${API_BASE}/sessions/${SESSION_PUBLIC_ID}/portfolio`, () =>
+        HttpResponse.json({ data: { portfolio: readyPortfolio } })
+      ),
+      http.get(`${API_BASE}/vacancies`, () =>
+        HttpResponse.json({
+          data: {
+            vacancies: [
+              {
+                public_id: VACANCY_PUBLIC_ID,
+                role_title: "Backend Engineer",
+                culture_dimensions: "",
+                competency_expectations: "",
+                skills: [],
+              },
+            ],
+            meta: {},
+          },
+        })
+      )
+    );
+  });
+
+  it("exports using the selected vacancy's public_id verbatim, not a coerced number", async () => {
+    let exportedVacancyId: string | null = null;
+    server.use(
+      http.get(`${API_BASE}/portfolios/${PORTFOLIO_PUBLIC_ID}/export`, ({ request }) => {
+        exportedVacancyId = new URL(request.url).searchParams.get("vacancy_id");
+        return HttpResponse.json({ exported_at: "now", portfolio: readyPortfolio });
+      })
+    );
+
+    renderPage();
+    await screen.findByText("Portfolio Results");
+
+    await userEvent.click(screen.getByRole("combobox"));
+    await userEvent.click(await screen.findByRole("option", { name: "Backend Engineer" }));
+    await userEvent.click(screen.getByRole("button", { name: /json/i }));
+
+    await waitFor(() => expect(exportedVacancyId).toBe(VACANCY_PUBLIC_ID));
+    expect(exportedVacancyId).not.toBe("NaN");
+  });
+
+  it("omits vacancy_id from the export request when no vacancy is selected (regression guard)", async () => {
+    let requestUrl: string | null = null;
+    server.use(
+      http.get(`${API_BASE}/portfolios/${PORTFOLIO_PUBLIC_ID}/export`, ({ request }) => {
+        requestUrl = request.url;
+        return HttpResponse.json({ exported_at: "now", portfolio: readyPortfolio });
+      })
+    );
+
+    renderPage();
+    await screen.findByText("Portfolio Results");
+
+    await userEvent.click(screen.getByRole("button", { name: /json/i }));
+
+    await waitFor(() => expect(requestUrl).not.toBeNull());
+    expect(new URL(requestUrl!).searchParams.has("vacancy_id")).toBe(false);
+  });
+});
+
 // Failure-code-driven messaging (ticket #25 / AC15): the free-text
 // `generation_error` no longer drives the branch shown to the assessor —
 // `failure_code` does. Covers all four backend enum values plus `nil`

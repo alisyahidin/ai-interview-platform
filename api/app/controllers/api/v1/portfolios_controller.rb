@@ -57,8 +57,13 @@ module Api
           return json_error("Portfolio is not ready for export (status: #{@portfolio.generation_status})", :unprocessable_entity)
         end
 
+        vacancy = nil
+        if params[:vacancy_id].present?
+          vacancy = find_vacancy_by_public_id(params[:vacancy_id])
+          return json_error("Vacancy not found", :not_found) unless vacancy
+        end
+
         if format == "pdf"
-          vacancy = params[:vacancy_id].present? ? Vacancy.find_by(id: params[:vacancy_id]) : nil
           pdf_data = Exports::PdfGenerator.new(portfolio: @portfolio, vacancy: vacancy).call
 
           return send_data pdf_data,
@@ -68,8 +73,7 @@ module Api
         end
 
         # JSON export
-        vacancy_id = params[:vacancy_id]
-        export_data = build_export_json(@portfolio, vacancy_id)
+        export_data = build_export_json(@portfolio, vacancy)
 
         send_data export_data.to_json,
                   filename:    "portfolio-#{@portfolio.public_id}.json",
@@ -84,7 +88,7 @@ module Api
 
         return json_error("vacancy_id is required", :unprocessable_entity) if vacancy_id.blank?
 
-        vacancy = Vacancy.find_by(id: vacancy_id)
+        vacancy = find_vacancy_by_public_id(vacancy_id)
         return json_error("Vacancy not found", :not_found) unless vacancy
 
         unless portfolio.complete?
@@ -106,7 +110,7 @@ module Api
         vacancy_id = params.dig(:fitgap, :vacancy_id) || params[:vacancy_id]
         return json_error("vacancy_id is required", :unprocessable_entity) if vacancy_id.blank?
 
-        vacancy = Vacancy.find_by(id: vacancy_id)
+        vacancy = find_vacancy_by_public_id(vacancy_id)
         return json_error("Vacancy not found", :not_found) unless vacancy
 
         unless portfolio.complete?
@@ -125,10 +129,14 @@ module Api
         json_error("Portfolio not found", :not_found)
       end
 
-      # GET /api/v1/portfolios/:public_id/fitgap/:vacancy_id
+      # GET /api/v1/portfolios/:public_id/fitgap/:vacancy_public_id
       def show_fitgap
         portfolio = Portfolio.find_by_public_id!(params[:public_id])
-        report    = FitGapReport.find_by(portfolio_id: portfolio.id, vacancy_id: params[:vacancy_id])
+
+        vacancy = find_vacancy_by_public_id(params[:vacancy_public_id])
+        return json_error("Vacancy not found", :not_found) unless vacancy
+
+        report = FitGapReport.find_by(portfolio_id: portfolio.id, vacancy_id: vacancy.id)
 
         if report.nil?
           return json_error("Fit/gap report not found", :not_found)
@@ -140,6 +148,20 @@ module Api
       end
 
       private
+
+      # #40/#41 fix: the vacancy side of the fit/gap flow (fitgap,
+      # regenerate_fitgap, show_fitgap, export) still took a raw sequential
+      # vacancy id after #40 stopped exposing one anywhere in the app --
+      # every call site resolves through here instead, by public_id, same
+      # shape as `Portfolio`/`Session`'s own `find_by_public_id!` (see
+      # HasPublicId). Returns nil (never raises) so call sites can turn a
+      # miss into their own 404 response, exactly like the pre-existing
+      # `Vacancy.find_by(id: ...)` calls they replace.
+      def find_vacancy_by_public_id(public_id)
+        Vacancy.find_by_public_id!(public_id)
+      rescue ActiveRecord::RecordNotFound
+        nil
+      end
 
       def set_session
         @session = Session.find_by_public_id!(params[:public_id])
@@ -212,14 +234,18 @@ module Api
         }
       end
 
-      def build_export_json(portfolio, vacancy_id = nil)
+      # `vacancy` is a resolved `Vacancy` record (or nil), not a raw id -- the
+      # `export` action resolves the public_id param (and 404s on a miss)
+      # before calling this, so this method never has to repeat that lookup
+      # or its 404 handling.
+      def build_export_json(portfolio, vacancy = nil)
         data = {
           exported_at: Time.current.iso8601,
           portfolio:   portfolio_json(portfolio)
         }
 
-        if vacancy_id.present?
-          report = FitGapReport.find_by(portfolio_id: portfolio.id, vacancy_id: vacancy_id)
+        if vacancy
+          report = FitGapReport.find_by(portfolio_id: portfolio.id, vacancy_id: vacancy.id)
           data[:fit_gap_report] = report ? fit_gap_json(report) : nil
         end
 

@@ -95,6 +95,154 @@ describe("FitGapReportPage polling wiring", () => {
   });
 });
 
+// Regression guard for the bug this ticket fixes: #40 stopped exposing
+// Vacancy's raw sequential id anywhere, but #41 left this page's four
+// vacancy-addressed calls (getFitGap/triggerFitGap/regenerateFitGap/
+// exportPortfolio) running the route's `:vacancyId` param through
+// `Number(...)` — which produces `NaN` for a public_id (a UUID-shaped
+// string), breaking every one of them. These specs prove the actual
+// requests this page sends carry the vacancy's public_id string verbatim.
+describe("FitGapReportPage vacancy id request shape", () => {
+  const VACANCY_PUBLIC_ID = "vacancy-public-77";
+
+  function renderPageForVacancy(vacancyId: string) {
+    return render(
+      <MemoryRouter initialEntries={[`/assessments/1/sessions/${SESSION_PUBLIC_ID}/fitgap/${vacancyId}`]}>
+        <Routes>
+          <Route
+            path="/assessments/:id/sessions/:sessionId/fitgap/:vacancyId"
+            element={<FitGapReportPage />}
+          />
+        </Routes>
+      </MemoryRouter>
+    );
+  }
+
+  beforeEach(() => {
+    retryMock.mockClear();
+    pollingResult = { isStalled: false, retry: retryMock, failureCount: 0, intervalMs: 5000 };
+
+    server.use(
+      http.get(`${API_BASE}/sessions/${SESSION_PUBLIC_ID}/portfolio`, () =>
+        HttpResponse.json({
+          data: {
+            portfolio: {
+              public_id: PORTFOLIO_PUBLIC_ID,
+              session_public_id: SESSION_PUBLIC_ID,
+              generation_status: "complete",
+              skills: [],
+              overrides: [],
+            },
+          },
+        })
+      )
+    );
+  });
+
+  it("fetches the report using the vacancy's public_id verbatim, not a coerced number", async () => {
+    let requestedVacancyId: string | null = null;
+    server.use(
+      http.get(`${API_BASE}/portfolios/${PORTFOLIO_PUBLIC_ID}/fitgap/:vacancyId`, ({ params }) => {
+        requestedVacancyId = params.vacancyId as string;
+        return HttpResponse.json({
+          data: {
+            report: {
+              id: 1,
+              portfolio_public_id: PORTFOLIO_PUBLIC_ID,
+              vacancy_public_id: VACANCY_PUBLIC_ID,
+              skill_comparisons: [],
+              culture_narrative: "c",
+              overall_narrative: "o",
+              generated_at: "2026-01-01T00:00:00.000Z",
+            },
+          },
+        });
+      })
+    );
+
+    renderPageForVacancy(VACANCY_PUBLIC_ID);
+
+    await waitFor(() => expect(requestedVacancyId).toBe(VACANCY_PUBLIC_ID));
+    expect(requestedVacancyId).not.toBe("NaN");
+  });
+
+  it("triggers generation using the vacancy's public_id verbatim when no report exists yet", async () => {
+    let triggeredVacancyId: string | null = null;
+    server.use(
+      http.get(`${API_BASE}/portfolios/${PORTFOLIO_PUBLIC_ID}/fitgap/:vacancyId`, () =>
+        HttpResponse.json({ error: "not_found" }, { status: 404 })
+      ),
+      http.post(`${API_BASE}/portfolios/${PORTFOLIO_PUBLIC_ID}/fitgap`, async ({ request }) => {
+        const body = (await request.json()) as { fitgap: { vacancy_id: string } };
+        triggeredVacancyId = body.fitgap.vacancy_id;
+        return HttpResponse.json({ data: { status: "pending", message: "queued" } });
+      })
+    );
+
+    renderPageForVacancy(VACANCY_PUBLIC_ID);
+
+    await waitFor(() => expect(triggeredVacancyId).toBe(VACANCY_PUBLIC_ID));
+    expect(triggeredVacancyId).not.toBe("NaN");
+  });
+
+  function mockReportReady() {
+    server.use(
+      http.get(`${API_BASE}/portfolios/${PORTFOLIO_PUBLIC_ID}/fitgap/:vacancyId`, () =>
+        HttpResponse.json({
+          data: {
+            report: {
+              id: 1,
+              portfolio_public_id: PORTFOLIO_PUBLIC_ID,
+              vacancy_public_id: VACANCY_PUBLIC_ID,
+              skill_comparisons: [],
+              culture_narrative: "c",
+              overall_narrative: "o",
+              generated_at: "2026-01-01T00:00:00.000Z",
+            },
+          },
+        })
+      )
+    );
+  }
+
+  it("regenerates using the vacancy's public_id verbatim", async () => {
+    let regeneratedVacancyId: string | null = null;
+    mockReportReady();
+    server.use(
+      http.post(`${API_BASE}/portfolios/${PORTFOLIO_PUBLIC_ID}/regenerate_fitgap`, async ({ request }) => {
+        const body = (await request.json()) as { vacancy_id: string };
+        regeneratedVacancyId = body.vacancy_id;
+        return HttpResponse.json({ data: { status: "pending", message: "queued" } });
+      })
+    );
+
+    renderPageForVacancy(VACANCY_PUBLIC_ID);
+
+    const regenerateButton = await screen.findByRole("button", { name: /regenerate/i });
+    await userEvent.click(regenerateButton);
+    await waitFor(() => expect(regeneratedVacancyId).toBe(VACANCY_PUBLIC_ID));
+    expect(regeneratedVacancyId).not.toBe("NaN");
+  });
+
+  it("exports using the vacancy's public_id verbatim", async () => {
+    let exportedVacancyId: string | null = null;
+    mockReportReady();
+    server.use(
+      http.get(`${API_BASE}/portfolios/${PORTFOLIO_PUBLIC_ID}/export`, ({ request }) => {
+        exportedVacancyId = new URL(request.url).searchParams.get("vacancy_id");
+        return HttpResponse.json({ exported_at: "now", portfolio: {} });
+      })
+    );
+
+    renderPageForVacancy(VACANCY_PUBLIC_ID);
+
+    const jsonButton = await screen.findByRole("button", { name: /json/i });
+    await userEvent.click(jsonButton);
+    await waitFor(() => expect(exportedVacancyId).toBe(VACANCY_PUBLIC_ID));
+    expect(exportedVacancyId).not.toBe("NaN");
+  });
+});
+
 // Ticket #24 (Phase 3b #3): the comparison table used to read `required_level`
 // — a key the backend has never sent (F8) — so the "Required" column was
 // permanently blank and the override marker never fired. #22 adds
