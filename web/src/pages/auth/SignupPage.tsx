@@ -1,35 +1,61 @@
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
-import { useSetAtom } from "jotai";
-import { authAtom, saveToken } from "@/stores/authAtom";
+import { useNavigate, useSearchParams, Link } from "react-router-dom";
+import { useForm } from "react-hook-form";
 import { authApi } from "@/services/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Loader2 } from "lucide-react";
 
+interface SignupFormValues {
+  invitation_token: string;
+  email: string;
+  password: string;
+}
+
+// #42: rebuilt to close two problems in the old SignupPage --
+// (1) it was never routed (see App.tsx), and (2) it let the submitter pick
+// their own `role`, including `admin` -- a privilege-escalation hazard. This
+// form has exactly three fields (invitation token, email, password); no
+// role selector exists anywhere on the page, enforced server-side too
+// (Auth::Registration never reads a `role` param even if one is sent).
 export default function SignupPage() {
   const navigate = useNavigate();
-  const setAuth = useSetAtom(authAtom);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [role, setRole] = useState<"admin" | "user">("user");
+  const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
+  // #38's anti-enumeration design returns the exact same message for an
+  // invalid/expired/used invitation token and for a duplicate email -- this
+  // is deliberate (so the form can't be used to enumerate accounts), so this
+  // page never tries to show a more specific message than the backend gives.
   const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<SignupFormValues>({
+    defaultValues: {
+      // The rake task that mints invitations prints a registration URL
+      // shaped like `/signup?token=<token>` (see api/lib/tasks/invitations.rake) --
+      // prefill from it when present, but keep the field editable so someone
+      // who lost the query param can paste their token in directly.
+      invitation_token: searchParams.get("token") ?? "",
+      email: "",
+      password: "",
+    },
+  });
+
+  const onSubmit = async (data: SignupFormValues) => {
     setError(null);
     setLoading(true);
     try {
-      const res = await authApi.signup({ email, password, role });
-      const token = res.data.token;
-      saveToken(token);
-      setAuth({ token });
-      navigate("/assessments");
-    } catch {
-      setError("Signup failed. Please try again.");
+      await authApi.signup(data);
+      navigate("/login", { state: { justRegistered: true } });
+    } catch (e: any) {
+      setError(
+        e?.response?.data?.errors?.[0]?.message ??
+          "Registration could not be completed. Please try again."
+      );
     } finally {
       setLoading(false);
     }
@@ -43,17 +69,38 @@ export default function SignupPage() {
           <p className="text-sm text-muted-foreground mt-1">Create an account</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
+          <div className="space-y-1.5">
+            <Label htmlFor="invitation_token">Invitation token</Label>
+            <Input
+              id="invitation_token"
+              autoComplete="off"
+              {...register("invitation_token", {
+                required: "Invitation token is required",
+              })}
+            />
+            {errors.invitation_token && (
+              <p className="text-xs text-destructive">{errors.invitation_token.message}</p>
+            )}
+          </div>
+
           <div className="space-y-1.5">
             <Label htmlFor="email">Email</Label>
             <Input
               id="email"
               type="email"
               autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
+              {...register("email", {
+                required: "Email is required",
+                pattern: {
+                  value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+                  message: "Enter a valid email address",
+                },
+              })}
             />
+            {errors.email && (
+              <p className="text-xs text-destructive">{errors.email.message}</p>
+            )}
           </div>
 
           <div className="space-y-1.5">
@@ -62,28 +109,13 @@ export default function SignupPage() {
               id="password"
               type="password"
               autoComplete="new-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
+              {...register("password", {
+                required: "Password is required",
+              })}
             />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label>Role</Label>
-            <RadioGroup
-              value={role}
-              onValueChange={(v) => setRole(v as "admin" | "user")}
-              className="flex gap-4"
-            >
-              <div className="flex items-center gap-2">
-                <RadioGroupItem value="user" id="role-user" />
-                <Label htmlFor="role-user" className="font-normal cursor-pointer">User</Label>
-              </div>
-              <div className="flex items-center gap-2">
-                <RadioGroupItem value="admin" id="role-admin" />
-                <Label htmlFor="role-admin" className="font-normal cursor-pointer">Admin</Label>
-              </div>
-            </RadioGroup>
+            {errors.password && (
+              <p className="text-xs text-destructive">{errors.password.message}</p>
+            )}
           </div>
 
           {error && <p className="text-sm text-destructive">{error}</p>}
