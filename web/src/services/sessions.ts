@@ -31,4 +31,11 @@ export const sessionsApi = {
 
   audioComplete: (token: string) =>
     api.post<{ ended: boolean; message: string }>(`/sessions/${token}/audio_complete`),
+
+  // Assessor-authenticated. Issues a brand-new session + invite token for the
+  // same candidate/assessment when the target session is in a terminal failed
+  // state (status: "ended", end_reason: "error" — see Session#failed? on the
+  // backend). The original failed session is left completely unmodified.
+  reinvite: (id: number) =>
+    api.post<{ session: Session; invite_url: string }>(`/sessions/${id}/reinvite`),
 };
