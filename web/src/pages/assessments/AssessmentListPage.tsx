@@ -150,8 +150,8 @@ export default function AssessmentListPage() {
       )}
 
       {/* Re-invite result. This page keeps showing the fresh link in a dialog,
-          unlike the Assessment's own candidate list, where a new invite is
-          simply a row in the table (#49). */}
+          unlike the Assessment's own candidate list, where a new invite is a
+          highlighted row carrying the ordinary copy-link action (#50). */}
       <Dialog
         open={!!reinviteResult}
         onOpenChange={(open) => {
