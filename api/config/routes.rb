@@ -27,14 +27,17 @@ Rails.application.routes.draw do
           post :end_session
           get  :coverage
           get  :transcript
+          post :reinvite
           get  :portfolio, to: 'portfolios#show'
           post 'portfolio/regenerate', to: 'portfolios#regenerate'
         end
       end
 
       # Candidate-facing (no JWT — invite token only)
-      get  'sessions/:token/candidate',      to: 'sessions#candidate_info'
-      post 'sessions/:token/audio_complete', to: 'sessions#audio_complete'
+      get  'sessions/:token/candidate',              to: 'sessions#candidate_info'
+      post 'sessions/:token/audio_complete',         to: 'sessions#audio_complete'
+      post 'sessions/:token/consent',                to: 'sessions#acknowledge_consent'
+      post 'sessions/:token/connectivity_advisory',  to: 'sessions#acknowledge_connectivity_advisory'
 
       # Portfolio skills overrides
       resources :portfolio_skills, only: [] do
