@@ -6,26 +6,19 @@ module Api
       skip_before_action :require_tenant!
 
       # POST /api/v1/auth/login
+      #
+      # Both `admin` and `user` roles may authenticate here -- see
+      # Auth::Authentication. The role/permission distinction is enforced at
+      # each controller's `authorize_auth_token!` call site, not at login.
       def authenticate
-        user = User.find_by(email: params[:email].to_s.downcase)
+        result = Auth::Authentication.new(email: params[:email], password: params[:password]).call
 
-        return json_error('Invalid email or password', :unauthorized) unless user&.authenticate(params[:password])
+        return json_error(result.error, :unauthorized) unless result.success?
 
-        return json_error('Invalid email or password', :unauthorized) unless user.role == 'admin'
+        user  = result.user
+        token = JsonWebToken.encode({ user_id: user.id })
 
-        scheme = resolve_scheme
-        token  = JsonWebToken.encode({ user_id: user.id, role: user.role, scheme: })
-
-        json_response({ token:, user: { id: user.id, email: user.email, role: user.role } })
-      end
-
-      private
-
-      def resolve_scheme
-        request.headers['X-Tenant-Scheme'].presence ||
-          ActiveRecord::Base.connection.select_value(
-            'SELECT scheme FROM organizations LIMIT 1'
-          ) || 'test-corp'
+        json_response({ token:, user: { id: user.id, email: user.email, role: user.role, organization_id: user.organization_id } })
       end
     end
   end

@@ -11,16 +11,22 @@ class ApplicationController < ActionController::API
   #   authorize_auth_token! :admin
   #   authorize_auth_token! :assessor      # allows admin or assessor
   #   authorize_auth_token! :any           # any authenticated user
+  #
+  # `prepend: true` so this runs *before* the `require_tenant!` before_action
+  # declared below (inherited from this class, so it would otherwise always
+  # run first) — tenant is now resolved from the freshly-loaded User record
+  # inside `authenticate_with_roles!`, so authentication must happen first.
   def self.authorize_auth_token!(*roles, **options)
-    before_action(options) { authenticate_with_roles!(roles) }
+    before_action(options.merge(prepend: true)) { authenticate_with_roles!(roles) }
   end
 
   private
 
   # ── Tenant ──────────────────────────────────────────────────────────────────
 
-  # Raises TenantNotFound if tenant resolution failed (i.e. bad/missing scheme).
-  # Override in controllers that don't require a tenant (e.g. health check).
+  # Raises TenantNotFound if tenant resolution failed (i.e. the authenticated
+  # user has no valid organization). Override in controllers that don't
+  # require a tenant (e.g. health check, login, candidate invite-token routes).
   def require_tenant!
     return if tenant_resolved?
 
@@ -55,6 +61,19 @@ class ApplicationController < ActionController::API
     roles = roles.flatten.map(&:to_s)
     result = AuthorizeApiRequest.new(request.headers, roles).call
     Current.user = result[:user]
+
+    resolve_tenant_from_user!
+  end
+
+  # Tenant comes from the just-loaded User record, not from the JWT's
+  # (removed) `scheme` claim, the `X-Tenant-Scheme` header, or the Referer
+  # host. Overwrites whatever TenantResolverMiddleware may have already set
+  # from those other sources for this request.
+  def resolve_tenant_from_user!
+    organization = Current.user&.organization
+
+    Current.organization = organization
+    Current.tenant_id    = organization&.id
   end
 
   # ── Params ──────────────────────────────────────────────────────────────────
