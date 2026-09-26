@@ -56,6 +56,73 @@ const en = {
     "Something went wrong on our end before your interview could finish, so it was not completed or evaluated.",
   "interview.terminal.complete.errorLine2":
     "This wasn't caused by anything you did. Please contact the recruiter or hiring team who invited you so they can help you finish the process.",
+
+  // Ticket #31 (F14): the pre-hardware-check consent/notice screen.
+  "notice.title": "Before we begin",
+  "notice.recording": "We record your voice (audio) for the full duration of this interview.",
+  "notice.aiInvolvement":
+    "This interview is conducted by an AI, which asks follow-up questions and evaluates your responses.",
+  "notice.purpose":
+    "Your recording and evaluation are used only to assess your fit for the role you applied to.",
+  "notice.contactLabel": "Questions or concerns about this recording? Contact:",
+  "notice.acknowledgeLabel": "I understand what is recorded, that an AI is involved, and why.",
+  "notice.continueButton": "I Understand and Agree",
+  "notice.error": "Something went wrong saving your acknowledgment. Please try again.",
+
+  // Ticket #30 (F10/F11/F12/F35): hardware/connectivity check patch.
+  "hardwareCheck.step.osAndBrowser": "OS & browser",
+  "hardwareCheck.step.internet": "Internet",
+  "hardwareCheck.step.camera": "Camera",
+  "hardwareCheck.step.microphone": "Microphone",
+  "hardwareCheck.step.audio": "Audio output",
+
+  "hardwareCheck.state.checking": "Checking…",
+  "hardwareCheck.state.passed": "Passed",
+  "hardwareCheck.state.failed": "Failed",
+  "hardwareCheck.state.warning": "Needs attention",
+  "hardwareCheck.state.waiting": "Waiting",
+
+  "hardwareCheck.progress.label": "Checking your setup",
+  "hardwareCheck.progress.stepsComplete": "steps complete",
+  "hardwareCheck.progress.estimatedTimeRemaining": "Estimated time remaining",
+  "hardwareCheck.progress.seconds": "s",
+
+  "hardwareCheck.camera.notActive": "Camera not active",
+  "hardwareCheck.camera.live": "LIVE",
+  "hardwareCheck.startInterview": "Start Interview",
+
+  "hardwareCheck.internet.download": "Download",
+  "hardwareCheck.internet.upload": "Upload",
+  "hardwareCheck.internet.ping": "Ping",
+
+  // F10/D4: an advisory, not a hard block — the candidate can always choose
+  // to continue.
+  "hardwareCheck.connectivity.warningTitle": "Your connection is slower than recommended",
+  "hardwareCheck.connectivity.warningBody":
+    "You can still start the interview, but a slow connection may affect audio quality.",
+  "hardwareCheck.connectivity.continueAnyway": "Continue anyway",
+  "hardwareCheck.connectivity.acknowledged": "Continuing with a slow connection",
+
+  // F12: one distinct message + (where practical) OS-specific recovery
+  // steps per real getUserMedia failure cause — never a single generic error.
+  "hardwareCheck.mic.noDevice.title": "No microphone found",
+  "hardwareCheck.mic.noDevice.body":
+    "We couldn't find a microphone on this device. Connect one, then retry.",
+  "hardwareCheck.mic.permissionDenied.title": "Microphone access denied",
+  "hardwareCheck.mic.permissionDenied.body":
+    "Your browser is blocking microphone access for this site.",
+  "hardwareCheck.mic.permissionDenied.stepsMac":
+    "Open System Settings → Privacy & Security → Microphone, and enable access for your browser. Then retry.",
+  "hardwareCheck.mic.permissionDenied.stepsWindows":
+    "Click the padlock icon in your browser's address bar → Site permissions → Microphone → Allow. Then retry.",
+  "hardwareCheck.mic.permissionDenied.stepsGeneric":
+    "Check your browser and operating system settings to allow microphone access for this site. Then retry.",
+  "hardwareCheck.mic.busy.title": "Microphone is in use",
+  "hardwareCheck.mic.busy.body":
+    "Another application appears to be using your microphone. Close it, then retry.",
+  "hardwareCheck.mic.unknown.title": "Microphone check failed",
+  "hardwareCheck.mic.unknown.body":
+    "Something went wrong while checking your microphone. Please retry.",
 } as const;
 
 /** Every valid translation key, derived from `en` so the two can't drift. */
@@ -89,6 +156,67 @@ const id: PartialDictionary = {
     "Terjadi kesalahan di sistem kami sebelum wawancara Anda selesai, sehingga wawancara ini tidak diselesaikan atau dinilai.",
   "interview.terminal.complete.errorLine2":
     "Ini bukan kesalahan Anda. Silakan hubungi perekrut atau tim yang mengundang Anda agar mereka dapat membantu Anda menyelesaikan proses ini.",
+
+  "notice.title": "Sebelum kita mulai",
+  "notice.recording": "Kami merekam suara Anda selama wawancara ini berlangsung.",
+  "notice.aiInvolvement":
+    "Wawancara ini dilakukan oleh AI, yang akan mengajukan pertanyaan lanjutan dan mengevaluasi jawaban Anda.",
+  "notice.purpose":
+    "Rekaman dan evaluasi Anda hanya digunakan untuk menilai kesesuaian Anda dengan posisi yang dilamar.",
+  "notice.contactLabel": "Ada pertanyaan atau keberatan soal rekaman ini? Hubungi:",
+  "notice.acknowledgeLabel": "Saya memahami apa yang direkam, keterlibatan AI, dan alasannya.",
+  "notice.continueButton": "Saya Mengerti dan Setuju",
+  "notice.error": "Terjadi kesalahan saat menyimpan persetujuan Anda. Silakan coba lagi.",
+
+  "hardwareCheck.step.osAndBrowser": "OS & peramban",
+  "hardwareCheck.step.internet": "Internet",
+  "hardwareCheck.step.camera": "Kamera",
+  "hardwareCheck.step.microphone": "Mikrofon",
+  "hardwareCheck.step.audio": "Keluaran audio",
+
+  "hardwareCheck.state.checking": "Memeriksa…",
+  "hardwareCheck.state.passed": "Lulus",
+  "hardwareCheck.state.failed": "Gagal",
+  "hardwareCheck.state.warning": "Perlu perhatian",
+  "hardwareCheck.state.waiting": "Menunggu",
+
+  "hardwareCheck.progress.label": "Memeriksa perangkat Anda",
+  "hardwareCheck.progress.stepsComplete": "langkah selesai",
+  "hardwareCheck.progress.estimatedTimeRemaining": "Perkiraan waktu tersisa",
+  "hardwareCheck.progress.seconds": "d",
+
+  "hardwareCheck.camera.notActive": "Kamera tidak aktif",
+  "hardwareCheck.camera.live": "LANGSUNG",
+  "hardwareCheck.startInterview": "Mulai Wawancara",
+
+  "hardwareCheck.internet.download": "Unduh",
+  "hardwareCheck.internet.upload": "Unggah",
+  "hardwareCheck.internet.ping": "Ping",
+
+  "hardwareCheck.connectivity.warningTitle": "Koneksi Anda lebih lambat dari yang disarankan",
+  "hardwareCheck.connectivity.warningBody":
+    "Anda tetap dapat memulai wawancara, tetapi koneksi yang lambat dapat memengaruhi kualitas audio.",
+  "hardwareCheck.connectivity.continueAnyway": "Tetap lanjutkan",
+  "hardwareCheck.connectivity.acknowledged": "Melanjutkan dengan koneksi lambat",
+
+  "hardwareCheck.mic.noDevice.title": "Mikrofon tidak ditemukan",
+  "hardwareCheck.mic.noDevice.body":
+    "Kami tidak menemukan mikrofon di perangkat ini. Sambungkan satu, lalu coba lagi.",
+  "hardwareCheck.mic.permissionDenied.title": "Akses mikrofon ditolak",
+  "hardwareCheck.mic.permissionDenied.body":
+    "Peramban Anda memblokir akses mikrofon untuk situs ini.",
+  "hardwareCheck.mic.permissionDenied.stepsMac":
+    "Buka System Settings → Privacy & Security → Microphone, lalu aktifkan akses untuk peramban Anda. Setelah itu, coba lagi.",
+  "hardwareCheck.mic.permissionDenied.stepsWindows":
+    "Klik ikon gembok di address bar peramban Anda → Site permissions → Microphone → Allow. Setelah itu, coba lagi.",
+  "hardwareCheck.mic.permissionDenied.stepsGeneric":
+    "Periksa pengaturan peramban dan sistem operasi Anda untuk mengizinkan akses mikrofon pada situs ini. Setelah itu, coba lagi.",
+  "hardwareCheck.mic.busy.title": "Mikrofon sedang digunakan",
+  "hardwareCheck.mic.busy.body":
+    "Sepertinya aplikasi lain sedang menggunakan mikrofon Anda. Tutup aplikasi tersebut, lalu coba lagi.",
+  "hardwareCheck.mic.unknown.title": "Pemeriksaan mikrofon gagal",
+  "hardwareCheck.mic.unknown.body":
+    "Terjadi kesalahan saat memeriksa mikrofon Anda. Silakan coba lagi.",
 };
 
 export const dictionaries: Record<Language, PartialDictionary> = { en, id };

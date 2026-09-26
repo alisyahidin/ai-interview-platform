@@ -222,7 +222,8 @@ export interface CandidateInfo {
   // session that hasn't ended yet.
   end_reason: string | null;
   // Ticket #29: the assessment's interview language, threaded down so
-  // candidate-facing screens can drive `useT()` (ticket #28) with it.
+  // candidate-facing screens can drive `useT()` (ticket #28) with it — e.g.
+  // the pre-hardware-check notice (ticket #31).
   language: "en" | "id";
 }
 

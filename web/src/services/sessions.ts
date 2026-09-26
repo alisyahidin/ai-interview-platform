@@ -38,4 +38,22 @@ export const sessionsApi = {
   // backend). The original failed session is left completely unmodified.
   reinvite: (id: number) =>
     api.post<{ session: Session; invite_url: string }>(`/sessions/${id}/reinvite`),
+
+  // Ticket #29: acknowledges the pre-interview notice (F14/AC27), setting
+  // `consent_given_at` on the session. No JWT — the invite token in the URL
+  // is the auth, matching `getCandidateInfo`/`audioComplete` above.
+  acknowledgeConsent: (token: string) =>
+    api.post<{ session_id: number; consent_given_at: string }>(`/sessions/${token}/consent`),
+
+  // Ticket #30 (F10/D4): records that the candidate chose "Continue anyway"
+  // past a connectivity advisory warning, setting
+  // `connectivity_advisory_acknowledged` on the session so the assessor can
+  // see the context later. No JWT — invite token in the URL, matching the
+  // other candidate-facing methods above. This never gates progress itself;
+  // callers must not block continuing the hardware check on this call
+  // succeeding (see HardwareCheck.tsx).
+  acknowledgeConnectivityAdvisory: (token: string) =>
+    api.post<{ session_id: number; connectivity_advisory_acknowledged: string | null }>(
+      `/sessions/${token}/connectivity_advisory`
+    ),
 };
