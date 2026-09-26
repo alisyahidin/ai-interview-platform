@@ -16,6 +16,7 @@ import VoiceBars from "@/components/interview/VoiceBars";
 import InterviewTimer from "@/components/interview/InterviewTimer";
 import ConnectionStatus from "@/components/interview/ConnectionStatus";
 import TranscriptBubble from "@/components/interview/TranscriptBubble";
+import NoticeScreen from "@/components/interview/NoticeScreen";
 import { useAudioCapture } from "@/hooks/useAudioCapture";
 import { useAudioPlayback } from "@/hooks/useAudioPlayback";
 import { useAudioWebSocket } from "@/hooks/useAudioWebSocket";
@@ -38,6 +39,48 @@ export default function InterviewPage() {
   const connectionLostTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [micMuted, setMicMuted] = useState(false);
   const micMutedRef = useRef(false);
+
+  // Pre-hardware-check consent notice (F14/AC27, ticket #31). One-time gate
+  // per session: the candidate-facing `candidate_info` endpoint doesn't
+  // expose `consent_given_at` (see ticket #29), so — per that ticket's own
+  // guidance to use judgment here — acknowledgment is tracked in
+  // `sessionStorage`, keyed by invite token, rather than requiring a new
+  // backend read just to re-derive a flag the candidate's own browser
+  // already knows. This still satisfies "not re-shown on a reload of the
+  // same session," since sessionStorage survives a reload of the same tab.
+  const consentStorageKey = token ? `interview_consent_ack:${token}` : null;
+  const [consentAcknowledged, setConsentAcknowledged] = useState(() => {
+    if (!consentStorageKey) return false;
+    try {
+      return sessionStorage.getItem(consentStorageKey) === "true";
+    } catch {
+      return false;
+    }
+  });
+  const [consentSubmitting, setConsentSubmitting] = useState(false);
+  const [consentError, setConsentError] = useState(false);
+
+  const handleAcknowledgeConsent = useCallback(async () => {
+    if (!token) return;
+    setConsentSubmitting(true);
+    setConsentError(false);
+    try {
+      await sessionsApi.acknowledgeConsent(token);
+      if (consentStorageKey) {
+        try {
+          sessionStorage.setItem(consentStorageKey, "true");
+        } catch {
+          // Best-effort — an in-memory fallback still blocks mic access
+          // this render, it just won't survive a reload.
+        }
+      }
+      setConsentAcknowledged(true);
+    } catch {
+      setConsentError(true);
+    } finally {
+      setConsentSubmitting(false);
+    }
+  }, [token, consentStorageKey]);
 
   // Fetch candidate info
   useEffect(() => {
@@ -186,6 +229,22 @@ export default function InterviewPage() {
       : connectionState === "connected"
       ? "connected"
       : "reconnecting";
+
+  // ── State A0: Consent notice — gates everything below it, including the
+  // hardware check, so microphone access is never attempted before this
+  // (F14/AC27, ticket #31) ──────────────────────────────────────────────
+  if (interviewState === "idle" && !consentAcknowledged) {
+    return (
+      <div className="max-w-xl mx-auto px-4 py-8">
+        <NoticeScreen
+          language={candidateInfo?.language}
+          onAcknowledge={handleAcknowledgeConsent}
+          isSubmitting={consentSubmitting}
+          hasError={consentError}
+        />
+      </div>
+    );
+  }
 
   // ── State A: Pre-start ──────────────────────────────────────────────────
   if (interviewState === "idle") {

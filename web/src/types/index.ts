@@ -213,6 +213,12 @@ export interface CandidateInfo {
   role_title: string;
   time_limit_min: number;
   session_status: string;
+  // Added by ticket #29 (candidate session contract): why a session ended
+  // (mirrors the assessor-facing `Session.end_reason`), and the candidate's
+  // interview language, used to drive `useT()` (ticket #28) on candidate
+  // screens such as the pre-hardware-check notice (ticket #31).
+  end_reason?: string | null;
+  language?: "en" | "id";
 }
 
 export interface PaginationMeta {

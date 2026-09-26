@@ -31,4 +31,10 @@ export const sessionsApi = {
 
   audioComplete: (token: string) =>
     api.post<{ ended: boolean; message: string }>(`/sessions/${token}/audio_complete`),
+
+  // Ticket #29: acknowledges the pre-interview notice (F14/AC27), setting
+  // `consent_given_at` on the session. No JWT — the invite token in the URL
+  // is the auth, matching `getCandidateInfo`/`audioComplete` above.
+  acknowledgeConsent: (token: string) =>
+    api.post<{ session_id: number; consent_given_at: string }>(`/sessions/${token}/consent`),
 };
