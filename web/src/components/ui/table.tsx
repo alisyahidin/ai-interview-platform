@@ -10,13 +10,27 @@ import { cn } from "@/lib/utils";
 //
 // `Table` wraps the <table> in an overflow-auto div, so a wide table scrolls
 // inside its own container instead of widening the page.
+//
+// `border-separate border-spacing-0` is not decoration: Tailwind's preflight
+// sets `border-collapse: collapse` on every table, and a sticky <thead>/<tr>
+// does not stick under collapsed borders — the collapsed borders scroll away
+// with the cells. Separating the borders restores sticky headers. Spacing is
+// zeroed to match what collapse gave for free, so the per-cell `border-b` this
+// primitive relies on still draws one line per row rather than doubling.
 
 const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableElement>>(
     ({ className, ...props }, ref) => (
         <div className="relative w-full overflow-auto">
-            <table ref={ref} className={cn("w-full caption-bottom text-sm", className)} {...props} />
+            <table
+                ref={ref}
+                className={cn(
+                    "w-full caption-bottom border-separate border-spacing-0 text-sm",
+                    className,
+                )}
+                {...props}
+            />
         </div>
-    )
+    ),
 );
 Table.displayName = "Table";
 
@@ -54,11 +68,11 @@ const TableRow = React.forwardRef<HTMLTableRowElement, React.HTMLAttributes<HTML
             ref={ref}
             className={cn(
                 "border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted",
-                className
+                className,
             )}
             {...props}
         />
-    )
+    ),
 );
 TableRow.displayName = "TableRow";
 
@@ -70,7 +84,7 @@ const TableHead = React.forwardRef<
         ref={ref}
         className={cn(
             "h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0",
-            className
+            className,
         )}
         {...props}
     />
@@ -93,21 +107,8 @@ const TableCaption = React.forwardRef<
     HTMLTableCaptionElement,
     React.HTMLAttributes<HTMLTableCaptionElement>
 >(({ className, ...props }, ref) => (
-    <caption
-        ref={ref}
-        className={cn("mt-4 text-sm text-muted-foreground", className)}
-        {...props}
-    />
+    <caption ref={ref} className={cn("mt-4 text-sm text-muted-foreground", className)} {...props} />
 ));
 TableCaption.displayName = "TableCaption";
 
-export {
-    Table,
-    TableHeader,
-    TableBody,
-    TableFooter,
-    TableRow,
-    TableHead,
-    TableCell,
-    TableCaption,
-};
+export { Table, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell, TableCaption };

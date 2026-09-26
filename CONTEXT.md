@@ -19,6 +19,7 @@ _Avoid_: Link, token, request
 **Session state**:
 The lifecycle of a Session, and only ever one of three: awaiting candidate, live, or ended. "Ended" alone does not say how it ended; that is the end reason's job.
 _Avoid_: Session status (see Assessment status), phase, stage
+_Exception_: the candidate session table's third column header reads "Status" because the issued spec (#44) fixes that wording for the screen. The header is the one place the plain-English word survives; the domain term everywhere else is state, and the value inside the column is still one of the three states.
 
 **End reason**:
 Why a Session stopped: the candidate ended it, the assessor ended it, the skills were covered, the time ceiling was reached, or the platform erred. Kept separately from the state, and correctable — a Session that errored may later be ended cleanly.

@@ -1,8 +1,8 @@
 import type { Session } from "@/types";
 import {
-  sessionPresentation,
-  type SessionPresentation,
-  type StatusBearingSession,
+    sessionPresentation,
+    type SessionPresentation,
+    type StateBearingSession,
 } from "@/utils/sessionStatus";
 
 /**
@@ -15,11 +15,11 @@ export type SessionFilter = "all" | SessionPresentation;
 
 /** The filters in the order the summary layer offers them. */
 export const SESSION_FILTERS: readonly SessionFilter[] = [
-  "all",
-  "awaiting_candidate",
-  "live",
-  "completed",
-  "failed",
+    "all",
+    "awaiting_candidate",
+    "live",
+    "completed",
+    "failed",
 ];
 
 /**
@@ -31,19 +31,19 @@ export const SESSION_FILTERS: readonly SessionFilter[] = [
  * would leave out.
  */
 export function countByPresentation(
-  sessions: readonly StatusBearingSession[]
+    sessions: readonly StateBearingSession[],
 ): Record<SessionFilter, number> {
-  const counts: Record<SessionFilter, number> = {
-    all: sessions.length,
-    awaiting_candidate: 0,
-    live: 0,
-    completed: 0,
-    failed: 0,
-  };
-  for (const session of sessions) {
-    counts[sessionPresentation(session)] += 1;
-  }
-  return counts;
+    const counts: Record<SessionFilter, number> = {
+        all: sessions.length,
+        awaiting_candidate: 0,
+        live: 0,
+        completed: 0,
+        failed: 0,
+    };
+    for (const session of sessions) {
+        counts[sessionPresentation(session)] += 1;
+    }
+    return counts;
 }
 
 /**
@@ -56,16 +56,16 @@ export function countByPresentation(
  * else would be matching on a field that does not exist.
  */
 export function filterSessions(
-  sessions: readonly Session[],
-  filter: SessionFilter,
-  query: string
+    sessions: readonly Session[],
+    filter: SessionFilter,
+    query: string,
 ): Session[] {
-  const needle = query.trim().toLowerCase();
-  return sessions.filter((session) => {
-    if (filter !== "all" && sessionPresentation(session) !== filter) {
-      return false;
-    }
-    if (!needle) return true;
-    return (session.candidate_name ?? "").toLowerCase().includes(needle);
-  });
+    const needle = query.trim().toLowerCase();
+    return sessions.filter((session) => {
+        if (filter !== "all" && sessionPresentation(session) !== filter) {
+            return false;
+        }
+        if (!needle) return true;
+        return (session.candidate_name ?? "").toLowerCase().includes(needle);
+    });
 }

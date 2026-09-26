@@ -46,7 +46,7 @@ function renderSmallTable() {
                     <TableCell colSpan={3}>Showing 2 of 2 candidates</TableCell>
                 </TableRow>
             </TableFooter>
-        </Table>
+        </Table>,
     );
 }
 
@@ -55,7 +55,9 @@ describe("Table primitives", () => {
         renderSmallTable();
 
         const table = screen.getByRole("table", { name: "Candidate sessions" });
-        expect(screen.getByText("Sessions for this assessment", { selector: "caption" })).toBeInTheDocument();
+        expect(
+            screen.getByText("Sessions for this assessment", { selector: "caption" }),
+        ).toBeInTheDocument();
 
         const sections = within(table)
             .getAllByRole("rowgroup")
@@ -80,16 +82,16 @@ describe("Table primitives", () => {
 
         const [head, ...bodyAndFooter] = rows;
         expect(within(head).queryAllByRole("cell")).toHaveLength(0);
-        expect(within(bodyAndFooter[0]).getAllByRole("cell").map((cell) => cell.textContent)).toEqual([
-            "1",
-            "Ali",
-            "Live",
-        ]);
-        expect(within(bodyAndFooter[1]).getAllByRole("cell").map((cell) => cell.textContent)).toEqual([
-            "2",
-            "Budi",
-            "Completed",
-        ]);
+        expect(
+            within(bodyAndFooter[0])
+                .getAllByRole("cell")
+                .map((cell) => cell.textContent),
+        ).toEqual(["1", "Ali", "Live"]);
+        expect(
+            within(bodyAndFooter[1])
+                .getAllByRole("cell")
+                .map((cell) => cell.textContent),
+        ).toEqual(["2", "Budi", "Completed"]);
     });
 
     it("lets a caller's className override a primitive's own, instead of appending to it", () => {
@@ -101,13 +103,15 @@ describe("Table primitives", () => {
                         <TableCell className="p-0">Ali</TableCell>
                     </TableRow>
                 </TableBody>
-            </Table>
+            </Table>,
         );
 
         // `cn` merges through tailwind-merge, so a later class in the same
         // Tailwind group replaces the primitive's default instead of fighting it.
         expect(screen.getByRole("columnheader", { name: "Candidate" })).toHaveClass("h-8");
-        expect(screen.getByRole("columnheader", { name: "Candidate" }).className).not.toContain("h-12");
+        expect(screen.getByRole("columnheader", { name: "Candidate" }).className).not.toContain(
+            "h-12",
+        );
         expect(screen.getByRole("cell", { name: "Ali" })).toHaveClass("p-0");
         expect(screen.getByRole("cell", { name: "Ali" }).className).not.toContain("p-4");
     });

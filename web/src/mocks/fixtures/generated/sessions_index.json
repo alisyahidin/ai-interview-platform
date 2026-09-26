@@ -1,0 +1,91 @@
+{
+  "data": {
+    "sessions": [
+      {
+        "id": 1,
+        "assessment_id": 1,
+        "tenant_id": 1,
+        "candidate_id": 1,
+        "candidate_name": "Wati Nur",
+        "invite_token": "fixture-awaiting-named",
+        "invite_url": "http://localhost:5173/interview/fixture-awaiting-named",
+        "status": "pending",
+        "end_reason": null,
+        "started_at": null,
+        "ended_at": null,
+        "duration_seconds": null,
+        "created_at": "2026-01-01T00:00:00.000Z",
+        "consent_given_at": null,
+        "connectivity_advisory_acknowledged": null
+      },
+      {
+        "id": 2,
+        "assessment_id": 1,
+        "tenant_id": 1,
+        "candidate_id": 1,
+        "candidate_name": null,
+        "invite_token": "fixture-awaiting-unnamed",
+        "invite_url": "http://localhost:5173/interview/fixture-awaiting-unnamed",
+        "status": "pending",
+        "end_reason": null,
+        "started_at": null,
+        "ended_at": null,
+        "duration_seconds": null,
+        "created_at": "2026-01-01T00:00:00.000Z",
+        "consent_given_at": null,
+        "connectivity_advisory_acknowledged": null
+      },
+      {
+        "id": 3,
+        "assessment_id": 1,
+        "tenant_id": 1,
+        "candidate_id": 1,
+        "candidate_name": "Rina Sari",
+        "invite_token": "fixture-live",
+        "invite_url": "http://localhost:5173/interview/fixture-live",
+        "status": "active",
+        "end_reason": null,
+        "started_at": "2026-01-01T00:00:00.000Z",
+        "ended_at": null,
+        "duration_seconds": null,
+        "created_at": "2026-01-01T00:00:00.000Z",
+        "consent_given_at": null,
+        "connectivity_advisory_acknowledged": null
+      },
+      {
+        "id": 4,
+        "assessment_id": 1,
+        "tenant_id": 1,
+        "candidate_id": 1,
+        "candidate_name": "Doni Prasetyo",
+        "invite_token": "fixture-completed",
+        "invite_url": "http://localhost:5173/interview/fixture-completed",
+        "status": "ended",
+        "end_reason": "all_covered",
+        "started_at": "2026-01-01T00:00:00.000Z",
+        "ended_at": "2026-01-01T00:00:00.000Z",
+        "duration_seconds": 1110,
+        "created_at": "2026-01-01T00:00:00.000Z",
+        "consent_given_at": null,
+        "connectivity_advisory_acknowledged": null
+      },
+      {
+        "id": 5,
+        "assessment_id": 1,
+        "tenant_id": 1,
+        "candidate_id": 1,
+        "candidate_name": "Agus Setiawan",
+        "invite_token": "fixture-failed",
+        "invite_url": "http://localhost:5173/interview/fixture-failed",
+        "status": "ended",
+        "end_reason": "error",
+        "started_at": "2026-01-01T00:00:00.000Z",
+        "ended_at": "2026-01-01T00:00:00.000Z",
+        "duration_seconds": 240,
+        "created_at": "2026-01-01T00:00:00.000Z",
+        "consent_given_at": null,
+        "connectivity_advisory_acknowledged": null
+      }
+    ]
+  }
+}
