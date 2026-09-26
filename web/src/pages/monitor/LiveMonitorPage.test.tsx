@@ -92,7 +92,7 @@ function mockSession(status: "pending" | "active" | "ended") {
         data: {
           session: {
             public_id: SESSION_PUBLIC_ID,
-            assessment_id: 1,
+            assessment_public_id: "assessment-public-1",
             invite_token: "tok-1",
             invite_url: "https://example.com/invite/tok-1",
             status,

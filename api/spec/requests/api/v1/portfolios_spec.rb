@@ -80,13 +80,13 @@ RSpec.describe "Api::V1::Portfolios", type: :request do
 
   def expected_fit_gap_json(report)
     {
-      "id"                => report.id,
-      "portfolio_id"      => report.portfolio_id,
-      "vacancy_id"        => report.vacancy_id,
-      "skill_comparisons" => report.skill_comparisons,
-      "culture_narrative" => report.culture_narrative,
-      "overall_narrative" => report.overall_narrative,
-      "generated_at"      => report.generated_at&.iso8601(3)
+      "id"                   => report.id,
+      "portfolio_public_id"  => report.portfolio.public_id,
+      "vacancy_public_id"    => report.vacancy.public_id,
+      "skill_comparisons"    => report.skill_comparisons,
+      "culture_narrative"    => report.culture_narrative,
+      "overall_narrative"    => report.overall_narrative,
+      "generated_at"         => report.generated_at&.iso8601(3)
     }
   end
 
@@ -140,6 +140,33 @@ RSpec.describe "Api::V1::Portfolios", type: :request do
         expect(response.parsed_body).not_to have_key("portfolio")
       end
     end
+
+    # #41 AC: "Portfolio export filenames and contents use public_id" --
+    # the JSON export's embedded fit_gap_report goes through the same
+    # fit_gap_json builder as the live fitgap endpoints, so it must carry
+    # the same public_id fix, not just the live API responses.
+    context "when requested with a vacancy_id param (embeds the fit/gap report)" do
+      before do
+        get "/api/v1/portfolios/#{world.portfolio_a.public_id}/export",
+            params: { vacancy_id: world.vacancy_a.id }, headers: headers_a
+      end
+
+      it "returns 200" do
+        expect(response).to have_http_status(:ok)
+      end
+
+      it "embeds the fit/gap report using public_id, not raw sequential foreign keys" do
+        expect(response.parsed_body["fit_gap_report"]).to eq(expected_fit_gap_json(world.fit_gap_report_a))
+      end
+
+      it "does not leak the raw sequential portfolio_id foreign key in the export contents" do
+        expect(response.parsed_body["fit_gap_report"]).not_to have_key("portfolio_id")
+      end
+
+      it "does not leak the raw sequential vacancy_id foreign key in the export contents" do
+        expect(response.parsed_body["fit_gap_report"]).not_to have_key("vacancy_id")
+      end
+    end
   end
 
   describe "POST /api/v1/portfolios/:id/fitgap" do
@@ -155,6 +182,19 @@ RSpec.describe "Api::V1::Portfolios", type: :request do
 
       it "returns the existing cached fit/gap report payload shape (AC49)" do
         expect(response.parsed_body["report"]).to eq(expected_fit_gap_json(world.fit_gap_report_a))
+      end
+
+      # #41 AC: sequential id absent from session/portfolio JSON responses --
+      # this endpoint used to leak FitGapReport's raw portfolio_id/vacancy_id
+      # sequential foreign keys directly; assert they're gone, not just that
+      # the new public_id keys are present (a passing "new key present"
+      # check alone wouldn't have caught the old leaky key still there).
+      it "does not leak the raw sequential portfolio_id foreign key" do
+        expect(response.parsed_body["report"]).not_to have_key("portfolio_id")
+      end
+
+      it "does not leak the raw sequential vacancy_id foreign key" do
+        expect(response.parsed_body["report"]).not_to have_key("vacancy_id")
       end
     end
 
@@ -230,6 +270,14 @@ RSpec.describe "Api::V1::Portfolios", type: :request do
 
       it "returns the existing fit/gap report payload shape (AC49)" do
         expect(response.parsed_body["report"]).to eq(expected_fit_gap_json(world.fit_gap_report_a))
+      end
+
+      it "does not leak the raw sequential portfolio_id foreign key" do
+        expect(response.parsed_body["report"]).not_to have_key("portfolio_id")
+      end
+
+      it "does not leak the raw sequential vacancy_id foreign key" do
+        expect(response.parsed_body["report"]).not_to have_key("vacancy_id")
       end
     end
 

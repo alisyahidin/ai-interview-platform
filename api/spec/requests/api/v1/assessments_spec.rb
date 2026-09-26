@@ -209,9 +209,17 @@ RSpec.describe "Api::V1::Assessments", type: :request do
     end
 
     describe "GET /api/v1/sessions/:id (nested assessment sub-object)" do
-      let(:session) { create(:session, tenant_id: tenant.id, assessment: assessment) }
+      # .reload -- public_id (#37) is a DB-side gen_random_uuid() default;
+      # Rails doesn't read it back onto the in-memory object without one.
+      # NB: this must address the session by its public_id, not the old
+      # sequential id -- #41 made `show` 404 on the latter (see the
+      # "addressed by the old sequential id" specs in sessions_spec.rb),
+      # so a request built with session.id here would 404 and leave
+      # response.parsed_body["session"] nil instead of exercising the
+      # embedded-assessment shape this describe block is meant to check.
+      let(:session) { create(:session, tenant_id: tenant.id, assessment: assessment).reload }
 
-      before { get "/api/v1/sessions/#{session.id}", headers: headers }
+      before { get "/api/v1/sessions/#{session.public_id}", headers: headers }
 
       it "keys the embedded assessment on public_id" do
         expect(response.parsed_body["session"]["assessment"]["public_id"]).to eq(assessment.public_id)

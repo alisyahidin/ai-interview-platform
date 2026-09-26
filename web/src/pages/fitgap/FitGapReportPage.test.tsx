@@ -172,8 +172,8 @@ describe("FitGapReportPage skill comparison table", () => {
           data: {
             report: {
               id: 1,
-              portfolio_id: 1,
-              vacancy_id: 1,
+              portfolio_public_id: PORTFOLIO_PUBLIC_ID,
+              vacancy_public_id: "vacancy-public-1",
               generated_at: "2026-01-01T00:00:00.000Z",
               ...report,
             },
