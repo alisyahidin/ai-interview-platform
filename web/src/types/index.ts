@@ -38,15 +38,17 @@ export interface Session {
   assessment_id: number;
   tenant_id?: number;
   candidate_id?: number;
-  candidate_name?: string;
+  // `null` where the API sends no value, not merely absent: the serializer
+  // always emits the key (see the generated sessions_index.json fixture).
+  candidate_name?: string | null;
   invite_token: string;
   invite_url: string;
   status: "pending" | "active" | "ended";
-  end_reason?: string;
-  started_at?: string;
-  ended_at?: string;
-  duration_seconds?: number;
-  created_at?: string;
+  end_reason?: string | null;
+  started_at?: string | null;
+  ended_at?: string | null;
+  duration_seconds?: number | null;
+  created_at?: string | null;
 }
 
 export interface CoverageSkill {
