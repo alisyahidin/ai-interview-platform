@@ -2,7 +2,6 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
@@ -17,7 +16,7 @@ import { assessmentsApi } from "@/services/assessments";
 import { usePolling } from "@/hooks/usePolling";
 import PollingStalledBanner from "@/components/resource/PollingStalledBanner";
 import { LEVEL_LABELS } from "@/utils/constants";
-import { ArrowLeft, Copy, Check, Eye, Pencil, Clock, Plus, UserRound } from "lucide-react";
+import { ArrowLeft, Copy, Check, Eye, Pencil, Plus, UserRound } from "lucide-react";
 import type { Assessment, Session } from "@/types";
 
 function SessionRow({
@@ -192,7 +191,7 @@ export default function AssessmentInvitePage() {
 
   if (loading) {
     return (
-      <div className="max-w-2xl mx-auto space-y-4">
+      <div className="space-y-4">
         <Skeleton className="h-8 w-64" />
         <Skeleton className="h-32 w-full" />
         <Skeleton className="h-48 w-full" />
@@ -201,31 +200,49 @@ export default function AssessmentInvitePage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-2">
-          <Link to="/assessments" className="text-muted-foreground hover:text-foreground">
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
-          <div>
-            <h1 className="text-lg font-semibold">{assessment?.name ?? "—"}</h1>
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-0.5">
-              <Clock className="h-3 w-3" />
-              {assessment?.time_limit_min} min · {assessment?.skills?.length ?? 0} skills
+      <div className="space-y-3">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start gap-2 min-w-0">
+            <Link to="/assessments" className="text-muted-foreground hover:text-foreground mt-1">
+              <ArrowLeft className="h-4 w-4" />
+            </Link>
+            <div className="min-w-0">
+              <h1 className="text-xl font-semibold">{assessment?.name ?? "—"}</h1>
+              <p className="text-sm text-muted-foreground mt-1">
+                {assessment?.time_limit_min} min time limit — share an invite link with each
+                candidate, then monitor the session as it runs.
+              </p>
             </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <Button variant="outline" size="sm" onClick={() => navigate(`/assessments/${id}/edit`)}>
+              <Pencil className="h-3.5 w-3.5 mr-1.5" /> Edit
+            </Button>
+            <Button size="sm" onClick={openInviteDialog} disabled={creatingSession}>
+              <Plus className="h-3.5 w-3.5 mr-1.5" />
+              {creatingSession ? "Creating..." : "Invite Candidate"}
+            </Button>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => navigate(`/assessments/${id}/edit`)}>
-            <Pencil className="h-3.5 w-3.5 mr-1.5" /> Edit
-          </Button>
-          <Button size="sm" onClick={openInviteDialog} disabled={creatingSession}>
-            <Plus className="h-3.5 w-3.5 mr-1.5" />
-            {creatingSession ? "Creating..." : "Invite Candidate"}
-          </Button>
-        </div>
+        {/* Assessed skills — a wrapping chip row, so every assessed skill stays
+            visible rather than being truncated behind a "N skills" count. */}
+        {assessment?.skills && assessment.skills.length > 0 && (
+          <ul className="flex flex-wrap gap-1.5" aria-label="Assessed skills">
+            {assessment.skills.map((s) => (
+              <li
+                key={s.id ?? s.skill_label}
+                className="inline-flex items-center gap-1.5 rounded-full border bg-muted/50 px-2.5 py-0.5 text-xs"
+              >
+                <span className="font-medium">{s.skill_label}</span>
+                <span className="text-muted-foreground">{LEVEL_LABELS[s.expected_level]}</span>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       {/* Invite candidate dialog */}
@@ -278,8 +295,6 @@ export default function AssessmentInvitePage() {
         </Card>
       )}
 
-      <Separator />
-
       {/* Polling stalled — repeated failures refreshing candidate status */}
       {pollingStalled && <PollingStalledBanner onRetry={retryPolling} />}
 
@@ -324,25 +339,6 @@ export default function AssessmentInvitePage() {
           </Card>
         )}
       </div>
-
-      {/* Assessment skills detail */}
-      {assessment?.skills && assessment.skills.length > 0 && (
-        <>
-          <Separator />
-          <div className="space-y-2">
-            <h2 className="text-sm font-semibold">Skills assessed</h2>
-            <ul className="space-y-1">
-              {assessment.skills.map((s) => (
-                <li key={s.id ?? s.skill_label} className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <span>•</span>
-                  <span>{s.skill_label}</span>
-                  <span className="text-xs">(expected {LEVEL_LABELS[s.expected_level]})</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </>
-      )}
     </div>
   );
 }
