@@ -183,7 +183,13 @@ RSpec.describe "Api::V1::Sessions", type: :request do
       end
 
       def original_attrs
-        @original_attrs ||= failed_session.attributes
+        # .reload here (not just .attributes right after create) because
+        # public_id (#37) is a DB-side gen_random_uuid() default -- like
+        # this schema's other function-defaulted columns, Rails doesn't
+        # read it back onto the in-memory object until a reload. Without
+        # this, "unmodified" would spuriously fail comparing a pre-reload
+        # nil public_id against the real value on the post-reinvite reload.
+        @original_attrs ||= failed_session.reload.attributes
       end
 
       def reinvite!

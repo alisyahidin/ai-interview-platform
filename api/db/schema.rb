@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_09_26_000000) do
+ActiveRecord::Schema[7.0].define(version: 2026_09_26_090000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pgcrypto"
   enable_extension "plpgsql"
@@ -55,6 +55,8 @@ ActiveRecord::Schema[7.0].define(version: 2026_09_26_000000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.string "language", default: "en"
+    t.uuid "public_id", default: -> { "gen_random_uuid()" }, null: false
+    t.index ["public_id"], name: "index_assessments_on_public_id", unique: true
     t.index ["tenant_id"], name: "index_assessments_on_tenant_id"
     t.check_constraint "time_limit_min = ANY (ARRAY[10, 30, 45, 60, 90])", name: "chk_assessments_time_limit"
   end
@@ -135,7 +137,9 @@ ActiveRecord::Schema[7.0].define(version: 2026_09_26_000000) do
     t.string "prompt_version"
     t.enum "failure_code", enum_type: "failure_code"
     t.bigint "tenant_id", null: false
+    t.uuid "public_id", default: -> { "gen_random_uuid()" }, null: false
     t.index ["candidate_id"], name: "index_portfolios_on_candidate_id"
+    t.index ["public_id"], name: "index_portfolios_on_public_id", unique: true
     t.index ["session_id"], name: "index_portfolios_on_session_id", unique: true
     t.index ["tenant_id"], name: "index_portfolios_on_tenant_id"
   end
@@ -155,9 +159,11 @@ ActiveRecord::Schema[7.0].define(version: 2026_09_26_000000) do
     t.string "candidate_name", limit: 255
     t.datetime "consent_given_at"
     t.datetime "connectivity_advisory_acknowledged"
+    t.uuid "public_id", default: -> { "gen_random_uuid()" }, null: false
     t.index ["assessment_id"], name: "index_sessions_on_assessment_id"
     t.index ["candidate_id"], name: "index_sessions_on_candidate_id"
     t.index ["invite_token"], name: "idx_sessions_invite_token", unique: true
+    t.index ["public_id"], name: "index_sessions_on_public_id", unique: true
     t.index ["tenant_id", "status"], name: "idx_sessions_tenant_status"
   end
 
@@ -205,6 +211,8 @@ ActiveRecord::Schema[7.0].define(version: 2026_09_26_000000) do
     t.text "competency_expectations"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.uuid "public_id", default: -> { "gen_random_uuid()" }, null: false
+    t.index ["public_id"], name: "index_vacancies_on_public_id", unique: true
     t.index ["tenant_id"], name: "index_vacancies_on_tenant_id"
   end
 

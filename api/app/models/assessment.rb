@@ -2,6 +2,7 @@
 
 class Assessment < ApplicationRecord
   include TenantScoped
+  include HasPublicId
 
   has_many :assessment_skills, dependent: :destroy, inverse_of: :assessment
   has_many :sessions, dependent: :restrict_with_error
