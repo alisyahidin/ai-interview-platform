@@ -11,10 +11,12 @@ import TranscriptPage from "./TranscriptPage";
 // other empty case (AC16), and existing ready-state rendering is unchanged.
 // Does not re-derive <Resource>'s own matrix (see Resource.test.tsx).
 const API_BASE = "http://localhost:3001/api/v1";
+// #41: sessions are addressed by public_id, not a sequential id.
+const SESSION_PUBLIC_ID = "session-public-1";
 
 function renderPage() {
   return render(
-    <MemoryRouter initialEntries={["/assessments/1/sessions/1/transcript"]}>
+    <MemoryRouter initialEntries={[`/assessments/1/sessions/${SESSION_PUBLIC_ID}/transcript`]}>
       <Routes>
         <Route path="/assessments/:id/sessions/:sessionId/transcript" element={<TranscriptPage />} />
       </Routes>
@@ -24,10 +26,17 @@ function renderPage() {
 
 function mockSession(session: Record<string, unknown>) {
   server.use(
-    http.get(`${API_BASE}/sessions/1`, () =>
+    http.get(`${API_BASE}/sessions/${SESSION_PUBLIC_ID}`, () =>
       HttpResponse.json({
         data: {
-          session: { id: 1, assessment_id: 1, invite_token: "tok", invite_url: "https://x/tok", candidate_name: "Ali", ...session },
+          session: {
+            public_id: SESSION_PUBLIC_ID,
+            assessment_id: 1,
+            invite_token: "tok",
+            invite_url: "https://x/tok",
+            candidate_name: "Ali",
+            ...session,
+          },
           assessment: { id: 1, name: "Backend Engineer", time_limit_min: 45 },
         },
       })
@@ -43,7 +52,7 @@ const readyTurns = [
 describe("TranscriptPage", () => {
   beforeEach(() => {
     server.use(
-      http.get(`${API_BASE}/sessions/1/transcript`, () =>
+      http.get(`${API_BASE}/sessions/${SESSION_PUBLIC_ID}/transcript`, () =>
         HttpResponse.json({ data: { turns: readyTurns, total: readyTurns.length } })
       )
     );
@@ -88,7 +97,7 @@ describe("TranscriptPage", () => {
   it("still renders the generic empty state (not wrong-state) for an active session with no turns yet", async () => {
     mockSession({ status: "active" });
     server.use(
-      http.get(`${API_BASE}/sessions/1/transcript`, () =>
+      http.get(`${API_BASE}/sessions/${SESSION_PUBLIC_ID}/transcript`, () =>
         HttpResponse.json({ data: { turns: [], total: 0 } })
       )
     );

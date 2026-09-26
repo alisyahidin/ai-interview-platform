@@ -52,4 +52,14 @@ RSpec.shared_examples "a model with a public_id" do |factory_name|
       described_class.find_by_public_id!(SecureRandom.uuid) # rubocop:disable Rails/DynamicFindBy
     end.to raise_error(ActiveRecord::RecordNotFound)
   end
+
+  # #41: a lookup keyed on the record's own old sequential id (not a UUID at
+  # all) must 404 like any other unknown identifier -- never a 500 from
+  # Postgres rejecting the type, and never a silent fallback to a numeric
+  # lookup.
+  it "raises RecordNotFound (not a DB type error) for the record's own sequential id" do
+    expect do
+      described_class.find_by_public_id!(record.id.to_s) # rubocop:disable Rails/DynamicFindBy
+    end.to raise_error(ActiveRecord::RecordNotFound)
+  end
 end

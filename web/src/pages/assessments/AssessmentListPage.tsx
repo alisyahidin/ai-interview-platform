@@ -88,7 +88,7 @@ export default function AssessmentListPage() {
   const [error, setError] = useState(false);
   const navigate = useNavigate();
 
-  const [reinvitingId, setReinvitingId] = useState<number | null>(null);
+  const [reinvitingId, setReinvitingId] = useState<string | null>(null);
   const [reinviteError, setReinviteError] = useState<string | null>(null);
   const [reinviteResult, setReinviteResult] = useState<{
     inviteUrl: string;
@@ -104,7 +104,7 @@ export default function AssessmentListPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const handleReinvite = async (sessionId: number, e: React.MouseEvent) => {
+  const handleReinvite = async (sessionId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setReinviteError(null);
     setReinvitingId(sessionId);
@@ -219,8 +219,8 @@ export default function AssessmentListPage() {
                         <span>·</span>
                         <SessionSummary
                           session={a.latest_session}
-                          isReinviting={reinvitingId === a.latest_session.id}
-                          onReinvite={(e) => handleReinvite(a.latest_session!.id, e)}
+                          isReinviting={reinvitingId === a.latest_session.public_id}
+                          onReinvite={(e) => handleReinvite(a.latest_session!.public_id, e)}
                         />
                       </>
                     )}

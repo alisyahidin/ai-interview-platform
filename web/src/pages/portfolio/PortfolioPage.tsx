@@ -55,7 +55,7 @@ const GENERIC_FAILURE_MESSAGE = "Portfolio generation failed.";
 export default function PortfolioPage() {
   const { id, sessionId } = useParams<{ id: string; sessionId: string }>();
 
-  const fetchSession = useCallback(() => sessionsApi.get(Number(sessionId)), [sessionId]);
+  const fetchSession = useCallback(() => sessionsApi.get(sessionId!), [sessionId]);
   const { resource } = useResource<SessionResponse>(fetchSession);
 
   return (
@@ -108,7 +108,7 @@ function PortfolioPageContent({
   const wasGeneratingRef = useRef(false);
 
   const fetchPortfolio = useCallback(async () => {
-    const res = await sessionsApi.getPortfolio(Number(sessionId));
+    const res = await sessionsApi.getPortfolio(sessionId);
     const data = res.data as any;
     const status = data.portfolio?.generation_status;
     if (data.status === "generating" || status === "generating" || status === "pending") {
@@ -131,7 +131,7 @@ function PortfolioPageContent({
   }, [sessionId]);
 
   const handleRetryGeneration = useCallback(async () => {
-    await sessionsApi.regeneratePortfolio(Number(sessionId));
+    await sessionsApi.regeneratePortfolio(sessionId);
     setGenerating(true);
   }, [sessionId]);
 
@@ -161,7 +161,7 @@ function PortfolioPageContent({
     setExporting(format);
     try {
       const res = await portfoliosApi.exportPortfolio(
-        portfolio.id,
+        portfolio.public_id,
         format,
         selectedVacancy ? Number(selectedVacancy) : undefined
       );

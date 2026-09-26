@@ -15,6 +15,9 @@ import PortfolioPage from "./PortfolioPage";
 // <Resource>'s own matrix (see Resource.test.tsx) or usePolling's backoff
 // schedule (see usePolling.test.ts).
 const API_BASE = "http://localhost:3001/api/v1";
+// #41: sessions/portfolios are addressed by public_id, not a sequential id.
+const SESSION_PUBLIC_ID = "session-public-1";
+const PORTFOLIO_PUBLIC_ID = "portfolio-public-5";
 
 const retryMock = vi.fn();
 let pollingResult: { isStalled: boolean; retry: () => void; failureCount: number; intervalMs: number } = {
@@ -37,7 +40,7 @@ vi.mock("@/hooks/usePolling", () => ({
 
 function renderPage() {
   return render(
-    <MemoryRouter initialEntries={["/assessments/1/sessions/1/portfolio"]}>
+    <MemoryRouter initialEntries={[`/assessments/1/sessions/${SESSION_PUBLIC_ID}/portfolio`]}>
       <Routes>
         <Route path="/assessments/:id/sessions/:sessionId/portfolio" element={<PortfolioPage />} />
       </Routes>
@@ -46,8 +49,8 @@ function renderPage() {
 }
 
 const readyPortfolio = {
-  id: 5,
-  session_id: 1,
+  public_id: PORTFOLIO_PUBLIC_ID,
+  session_public_id: SESSION_PUBLIC_ID,
   generation_status: "complete",
   skills: [
     {
@@ -67,10 +70,17 @@ const readyPortfolio = {
 
 function mockSession(session: Record<string, unknown>) {
   server.use(
-    http.get(`${API_BASE}/sessions/1`, () =>
+    http.get(`${API_BASE}/sessions/${SESSION_PUBLIC_ID}`, () =>
       HttpResponse.json({
         data: {
-          session: { id: 1, assessment_id: 1, invite_token: "tok", invite_url: "https://x/tok", candidate_name: "Ali", ...session },
+          session: {
+            public_id: SESSION_PUBLIC_ID,
+            assessment_id: 1,
+            invite_token: "tok",
+            invite_url: "https://x/tok",
+            candidate_name: "Ali",
+            ...session,
+          },
           assessment: { id: 1, name: "Backend Engineer", time_limit_min: 45 },
         },
       })
@@ -86,7 +96,7 @@ describe("PortfolioPage", () => {
 
     server.use(
       http.get(`${API_BASE}/vacancies`, () => HttpResponse.json({ data: { vacancies: [], meta: {} } })),
-      http.get(`${API_BASE}/sessions/1/portfolio`, () =>
+      http.get(`${API_BASE}/sessions/${SESSION_PUBLIC_ID}/portfolio`, () =>
         HttpResponse.json({ data: { portfolio: readyPortfolio } })
       )
     );
@@ -143,7 +153,7 @@ describe("PortfolioPage", () => {
   it("renders a manual retry action once the polling hook reports stalled, wired to retry()", async () => {
     mockSession({ status: "active" });
     server.use(
-      http.get(`${API_BASE}/sessions/1/portfolio`, () =>
+      http.get(`${API_BASE}/sessions/${SESSION_PUBLIC_ID}/portfolio`, () =>
         HttpResponse.json({ data: { status: "generating" } })
       )
     );
@@ -161,7 +171,7 @@ describe("PortfolioPage", () => {
   it("does not render a manual retry action while polling is healthy", async () => {
     mockSession({ status: "active" });
     server.use(
-      http.get(`${API_BASE}/sessions/1/portfolio`, () =>
+      http.get(`${API_BASE}/sessions/${SESSION_PUBLIC_ID}/portfolio`, () =>
         HttpResponse.json({ data: { status: "generating" } })
       )
     );
@@ -190,8 +200,8 @@ describe("PortfolioPage generation-failure messaging", () => {
 
   function failedPortfolio(failureCode: string | null) {
     return {
-      id: 5,
-      session_id: 1,
+      public_id: PORTFOLIO_PUBLIC_ID,
+      session_public_id: SESSION_PUBLIC_ID,
       generation_status: "failed",
       generation_error: "boom: something went wrong upstream",
       failure_code: failureCode,
@@ -203,7 +213,7 @@ describe("PortfolioPage generation-failure messaging", () => {
   async function renderFailedPortfolio(failureCode: string | null) {
     mockSession({ status: "ended", end_reason: "completed" });
     server.use(
-      http.get(`${API_BASE}/sessions/1/portfolio`, () =>
+      http.get(`${API_BASE}/sessions/${SESSION_PUBLIC_ID}/portfolio`, () =>
         HttpResponse.json({ data: { portfolio: failedPortfolio(failureCode) } })
       )
     );
@@ -216,7 +226,7 @@ describe("PortfolioPage generation-failure messaging", () => {
     "offers a Retry action for failure_code=%s, describing a transient problem",
     async (failureCode) => {
       server.use(
-        http.post(`${API_BASE}/sessions/1/portfolio/regenerate`, () =>
+        http.post(`${API_BASE}/sessions/${SESSION_PUBLIC_ID}/portfolio/regenerate`, () =>
           HttpResponse.json({ data: { message: "queued", portfolio: failedPortfolio(null) } })
         )
       );
@@ -249,7 +259,7 @@ describe("PortfolioPage generation-failure messaging", () => {
 
   it("falls back to the generic failed message and a Retry action when failure_code is nil", async () => {
     server.use(
-      http.post(`${API_BASE}/sessions/1/portfolio/regenerate`, () =>
+      http.post(`${API_BASE}/sessions/${SESSION_PUBLIC_ID}/portfolio/regenerate`, () =>
         HttpResponse.json({ data: { message: "queued", portfolio: failedPortfolio(null) } })
       )
     );
@@ -280,7 +290,7 @@ describe("PortfolioPage generation-failure messaging", () => {
   it("announces generation completing via an ARIA live region while the assessor is on the page", async () => {
     mockSession({ status: "active" });
     server.use(
-      http.get(`${API_BASE}/sessions/1/portfolio`, () =>
+      http.get(`${API_BASE}/sessions/${SESSION_PUBLIC_ID}/portfolio`, () =>
         HttpResponse.json({ data: { status: "generating" } })
       )
     );
@@ -294,7 +304,7 @@ describe("PortfolioPage generation-failure messaging", () => {
     // Simulate the next poll tick (driven by the real usePolling hook in
     // production) observing the terminal "complete" state.
     server.use(
-      http.get(`${API_BASE}/sessions/1/portfolio`, () =>
+      http.get(`${API_BASE}/sessions/${SESSION_PUBLIC_ID}/portfolio`, () =>
         HttpResponse.json({ data: { portfolio: readyPortfolio } })
       )
     );
@@ -310,7 +320,7 @@ describe("PortfolioPage generation-failure messaging", () => {
   it("does not announce completion when the page loads directly onto an already-complete portfolio", async () => {
     mockSession({ status: "ended", end_reason: "completed" });
     server.use(
-      http.get(`${API_BASE}/sessions/1/portfolio`, () =>
+      http.get(`${API_BASE}/sessions/${SESSION_PUBLIC_ID}/portfolio`, () =>
         HttpResponse.json({ data: { portfolio: readyPortfolio } })
       )
     );

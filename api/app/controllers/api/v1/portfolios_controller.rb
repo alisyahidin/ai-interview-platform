@@ -62,7 +62,7 @@ module Api
           pdf_data = Exports::PdfGenerator.new(portfolio: @portfolio, vacancy: vacancy).call
 
           return send_data pdf_data,
-                           filename:    "portfolio-#{@portfolio.id}.pdf",
+                           filename:    "portfolio-#{@portfolio.public_id}.pdf",
                            type:        "application/pdf",
                            disposition: "attachment"
         end
@@ -72,14 +72,14 @@ module Api
         export_data = build_export_json(@portfolio, vacancy_id)
 
         send_data export_data.to_json,
-                  filename:    "portfolio-#{@portfolio.id}.json",
+                  filename:    "portfolio-#{@portfolio.public_id}.json",
                   type:        "application/json",
                   disposition: "attachment"
       end
 
-      # POST /api/v1/portfolios/:id/regenerate_fitgap
+      # POST /api/v1/portfolios/:public_id/regenerate_fitgap
       def regenerate_fitgap
-        portfolio  = Portfolio.find(params[:id])
+        portfolio  = Portfolio.find_by_public_id!(params[:public_id]) # rubocop:disable Rails/DynamicFindBy
         vacancy_id = params[:vacancy_id]
 
         return json_error("vacancy_id is required", :unprocessable_entity) if vacancy_id.blank?
@@ -99,9 +99,9 @@ module Api
         json_error("Portfolio not found", :not_found)
       end
 
-      # POST /api/v1/portfolios/:id/fitgap
+      # POST /api/v1/portfolios/:public_id/fitgap
       def fitgap
-        portfolio = Portfolio.find(params[:id])
+        portfolio = Portfolio.find_by_public_id!(params[:public_id]) # rubocop:disable Rails/DynamicFindBy
 
         vacancy_id = params.dig(:fitgap, :vacancy_id) || params[:vacancy_id]
         return json_error("vacancy_id is required", :unprocessable_entity) if vacancy_id.blank?
@@ -125,9 +125,9 @@ module Api
         json_error("Portfolio not found", :not_found)
       end
 
-      # GET /api/v1/portfolios/:id/fitgap/:vacancy_id
+      # GET /api/v1/portfolios/:public_id/fitgap/:vacancy_id
       def show_fitgap
-        portfolio = Portfolio.find(params[:id])
+        portfolio = Portfolio.find_by_public_id!(params[:public_id]) # rubocop:disable Rails/DynamicFindBy
         report    = FitGapReport.find_by(portfolio_id: portfolio.id, vacancy_id: params[:vacancy_id])
 
         if report.nil?
@@ -142,18 +142,18 @@ module Api
       private
 
       def set_session
-        @session = Session.find(params[:id])
+        @session = Session.find_by_public_id!(params[:public_id]) # rubocop:disable Rails/DynamicFindBy
       rescue ActiveRecord::RecordNotFound
         json_error("Session not found", :not_found)
       end
 
       def set_portfolio
-        # Routes use :id for both session-based and direct portfolio lookups
-        # If called from session context, look up via session
+        # Routes use :public_id for both session-based and direct portfolio
+        # lookups. If called from session context, look up via session
         if @session
           @portfolio = @session.portfolio
         else
-          @portfolio = Portfolio.find(params[:id])
+          @portfolio = Portfolio.find_by_public_id!(params[:public_id]) # rubocop:disable Rails/DynamicFindBy
         end
       rescue ActiveRecord::RecordNotFound
         json_error("Portfolio not found", :not_found)
@@ -161,8 +161,8 @@ module Api
 
       def portfolio_json(portfolio)
         {
-          id:                portfolio.id,
-          session_id:        portfolio.session_id,
+          public_id:         portfolio.public_id,
+          session_public_id: portfolio.session.public_id,
           candidate_id:      portfolio.candidate_id,
           generation_status: portfolio.generation_status,
           generated_at:      portfolio.generated_at,

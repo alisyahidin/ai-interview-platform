@@ -21,8 +21,10 @@ Rails.application.routes.draw do
         resources :sessions, only: %i[index create]
       end
 
-      # Sessions
-      resources :sessions, only: %i[show] do
+      # Sessions — assessor-facing, addressed by public_id (#41), not the
+      # sequential :id. The candidate-facing routes below (invite-token
+      # keyed) are a separate, untouched mechanism.
+      resources :sessions, only: %i[show], param: :public_id do
         member do
           post :end_session
           get  :coverage
@@ -53,8 +55,9 @@ Rails.application.routes.draw do
       # Vacancies
       resources :vacancies
 
-      # Portfolios — fit/gap and export
-      resources :portfolios, only: [] do
+      # Portfolios — fit/gap and export. Addressed by public_id (#41), not
+      # the sequential :id.
+      resources :portfolios, only: [], param: :public_id do
         member do
           post :fitgap
           post :regenerate_fitgap

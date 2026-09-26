@@ -34,8 +34,11 @@ RSpec.describe "Api::V1::Assessments", type: :request do
       end
 
       it "includes connectivity_advisory_acknowledged in latest_session alongside the existing keys" do
+        # #41: latest_session is a *session*, so its identifier is public_id,
+        # not the sequential id -- reconciled here per #41's own note that
+        # this overlaps with ticket #40's file.
         expect(latest_session_for(assessment.id)).to include(
-          "id" => be_present, "status" => "active", "end_reason" => nil,
+          "public_id" => be_present, "status" => "active", "end_reason" => nil,
           "connectivity_advisory_acknowledged" => "2026-09-26T10:00:00.000Z"
         )
       end

@@ -46,9 +46,12 @@ module Api
         )
 
         if session.save
+          # public_id (#37) is a DB-side gen_random_uuid() default -- reload
+          # so the in-memory record (and therefore session_json's public_id)
+          # reflects the value Postgres actually generated, not nil.
           json_response(
             {
-              session:    session_json(session),
+              session:    session_json(session.reload),
               invite_url: session.invite_url
             },
             :created
@@ -137,6 +140,10 @@ module Api
           candidate_name: @session.candidate_name
         )
 
+        # public_id (#37) is a DB-side gen_random_uuid() default -- reload so
+        # session_json's public_id reflects the generated value, not nil.
+        new_session.reload
+
         json_response(
           {
             session:    session_json(new_session),
@@ -210,7 +217,7 @@ module Api
       private
 
       def set_session
-        @session = Session.find(params[:id])
+        @session = Session.find_by_public_id!(params[:public_id]) # rubocop:disable Rails/DynamicFindBy
       rescue ActiveRecord::RecordNotFound
         json_error("Session not found", :not_found)
       end
@@ -228,7 +235,7 @@ module Api
 
       def session_json(session)
         {
-          id:               session.id,
+          public_id:        session.public_id,
           assessment_id:    session.assessment_id,
           tenant_id:        session.tenant_id,
           candidate_id:     session.candidate_id,

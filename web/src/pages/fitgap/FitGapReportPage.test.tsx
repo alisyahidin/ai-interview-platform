@@ -12,6 +12,9 @@ import type { SkillComparison } from "@/types";
 // stalled state (ticket #15) — it does not re-derive the hook's own backoff
 // matrix, which is covered exhaustively in `src/hooks/usePolling.test.ts`.
 const API_BASE = "http://localhost:3001/api/v1";
+// #41: sessions/portfolios are addressed by public_id, not a sequential id.
+const SESSION_PUBLIC_ID = "session-public-1";
+const PORTFOLIO_PUBLIC_ID = "portfolio-public-1";
 
 const retryMock = vi.fn();
 let pollingResult: { isStalled: boolean; retry: () => void; failureCount: number; intervalMs: number } = {
@@ -27,7 +30,7 @@ vi.mock("@/hooks/usePolling", () => ({
 
 function renderPage() {
   return render(
-    <MemoryRouter initialEntries={["/assessments/1/sessions/1/fitgap/1"]}>
+    <MemoryRouter initialEntries={[`/assessments/1/sessions/${SESSION_PUBLIC_ID}/fitgap/1`]}>
       <Routes>
         <Route
           path="/assessments/:id/sessions/:sessionId/fitgap/:vacancyId"
@@ -44,12 +47,12 @@ describe("FitGapReportPage polling wiring", () => {
     pollingResult = { isStalled: false, retry: retryMock, failureCount: 0, intervalMs: 5000 };
 
     server.use(
-      http.get(`${API_BASE}/sessions/1/portfolio`, () =>
+      http.get(`${API_BASE}/sessions/${SESSION_PUBLIC_ID}/portfolio`, () =>
         HttpResponse.json({
           data: {
             portfolio: {
-              id: 1,
-              session_id: 1,
+              public_id: PORTFOLIO_PUBLIC_ID,
+              session_public_id: SESSION_PUBLIC_ID,
               generation_status: "complete",
               skills: [],
               overrides: [],
@@ -59,10 +62,10 @@ describe("FitGapReportPage polling wiring", () => {
       ),
       // Report not generated yet — page reacts by triggering generation and
       // polling until it's ready.
-      http.get(`${API_BASE}/portfolios/1/fitgap/1`, () =>
+      http.get(`${API_BASE}/portfolios/${PORTFOLIO_PUBLIC_ID}/fitgap/1`, () =>
         HttpResponse.json({ error: "not_found" }, { status: 404 })
       ),
-      http.post(`${API_BASE}/portfolios/1/fitgap`, () =>
+      http.post(`${API_BASE}/portfolios/${PORTFOLIO_PUBLIC_ID}/fitgap`, () =>
         HttpResponse.json({ data: { status: "pending", message: "queued" } })
       )
     );
@@ -150,12 +153,12 @@ describe("FitGapReportPage skill comparison table", () => {
     overall_narrative: string;
   }) {
     server.use(
-      http.get(`${API_BASE}/sessions/1/portfolio`, () =>
+      http.get(`${API_BASE}/sessions/${SESSION_PUBLIC_ID}/portfolio`, () =>
         HttpResponse.json({
           data: {
             portfolio: {
-              id: 1,
-              session_id: 1,
+              public_id: PORTFOLIO_PUBLIC_ID,
+              session_public_id: SESSION_PUBLIC_ID,
               generation_status: "complete",
               skills: [],
               overrides: [],
@@ -164,7 +167,7 @@ describe("FitGapReportPage skill comparison table", () => {
         })
       ),
       // Report already exists — no generation/polling involved.
-      http.get(`${API_BASE}/portfolios/1/fitgap/1`, () =>
+      http.get(`${API_BASE}/portfolios/${PORTFOLIO_PUBLIC_ID}/fitgap/1`, () =>
         HttpResponse.json({
           data: {
             report: {

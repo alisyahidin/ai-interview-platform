@@ -33,13 +33,13 @@ export default function FitGapReportPage() {
   const fetchReport = useCallback(async () => {
     if (!portfolio) return;
     try {
-      const res = await portfoliosApi.getFitGap(portfolio.id, Number(vacancyId));
+      const res = await portfoliosApi.getFitGap(portfolio.public_id, Number(vacancyId));
       setReport(res.data.report);
       setGenerating(false);
     } catch (e: any) {
       if (e?.response?.status === 404) {
         try {
-          await portfoliosApi.triggerFitGap(portfolio.id, Number(vacancyId));
+          await portfoliosApi.triggerFitGap(portfolio.public_id, Number(vacancyId));
           setGenerating(true);
         } catch (triggerError) {
           setGenerating(false);
@@ -57,7 +57,7 @@ export default function FitGapReportPage() {
 
   useEffect(() => {
     sessionsApi
-      .getPortfolio(Number(sessionId))
+      .getPortfolio(sessionId!)
       .then(async (res) => {
         const data = res.data as any;
         if (data.portfolio) {
@@ -92,7 +92,7 @@ export default function FitGapReportPage() {
     if (!portfolio) return;
     setRegenerating(true);
     try {
-      await portfoliosApi.regenerateFitGap(portfolio.id, Number(vacancyId));
+      await portfoliosApi.regenerateFitGap(portfolio.public_id, Number(vacancyId));
       setReport(null);
       setGenerating(true);
     } finally {
@@ -104,7 +104,7 @@ export default function FitGapReportPage() {
     if (!portfolio) return;
     setExporting(format);
     try {
-      const res = await portfoliosApi.exportPortfolio(portfolio.id, format, Number(vacancyId));
+      const res = await portfoliosApi.exportPortfolio(portfolio.public_id, format, Number(vacancyId));
       const ext = format;
       const blob = format === "pdf"
         ? new Blob([res.data as BlobPart], { type: "application/pdf" })

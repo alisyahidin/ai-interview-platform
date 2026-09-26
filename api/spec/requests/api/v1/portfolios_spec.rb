@@ -25,8 +25,12 @@ RSpec.describe "Api::V1::Portfolios", type: :request do
 
   def build_world
     assessment_a = create(:assessment, tenant_id: tenant_a.id)
-    session_a    = create(:session, tenant_id: tenant_a.id, assessment: assessment_a)
-    portfolio_a  = create(:portfolio, session: session_a)
+    # .reload on session_a/portfolio_a -- public_id (#37) is a DB-side
+    # gen_random_uuid() default; Rails doesn't read it back onto the
+    # in-memory object without one, and specs below build request paths
+    # from these records' public_id right after creation.
+    session_a    = create(:session, tenant_id: tenant_a.id, assessment: assessment_a).reload
+    portfolio_a  = create(:portfolio, session: session_a).reload
     skill_a      = create(:portfolio_skill, portfolio: portfolio_a)
     vacancy_a    = create(:vacancy, tenant_id: tenant_a.id)
 
@@ -47,8 +51,8 @@ RSpec.describe "Api::V1::Portfolios", type: :request do
 
   def expected_portfolio_json(portfolio)
     {
-      "id"                => portfolio.id,
-      "session_id"        => portfolio.session_id,
+      "public_id"         => portfolio.public_id,
+      "session_public_id" => portfolio.session.public_id,
       "candidate_id"      => portfolio.candidate_id,
       "generation_status" => portfolio.generation_status,
       "generated_at"      => portfolio.generated_at&.iso8601(3),
@@ -88,7 +92,7 @@ RSpec.describe "Api::V1::Portfolios", type: :request do
 
   describe "GET /api/v1/sessions/:id/portfolio (show)" do
     context "when requested by the owning tenant" do
-      before { get "/api/v1/sessions/#{world.session_a.id}/portfolio", headers: headers_a }
+      before { get "/api/v1/sessions/#{world.session_a.public_id}/portfolio", headers: headers_a }
 
       it "returns 200 (AC49)" do
         expect(response).to have_http_status(:ok)
@@ -100,7 +104,7 @@ RSpec.describe "Api::V1::Portfolios", type: :request do
     end
 
     context "when requested by another tenant" do
-      before { get "/api/v1/sessions/#{world.session_a.id}/portfolio", headers: headers_b }
+      before { get "/api/v1/sessions/#{world.session_a.public_id}/portfolio", headers: headers_b }
 
       it "returns 404 (AC48)" do
         expect(response).to have_http_status(:not_found)
@@ -114,7 +118,7 @@ RSpec.describe "Api::V1::Portfolios", type: :request do
 
   describe "GET /api/v1/portfolios/:id/export" do
     context "when requested by the owning tenant" do
-      before { get "/api/v1/portfolios/#{world.portfolio_a.id}/export", headers: headers_a }
+      before { get "/api/v1/portfolios/#{world.portfolio_a.public_id}/export", headers: headers_a }
 
       it "returns 200 (AC49)" do
         expect(response).to have_http_status(:ok)
@@ -126,7 +130,7 @@ RSpec.describe "Api::V1::Portfolios", type: :request do
     end
 
     context "when requested by another tenant" do
-      before { get "/api/v1/portfolios/#{world.portfolio_a.id}/export", headers: headers_b }
+      before { get "/api/v1/portfolios/#{world.portfolio_a.public_id}/export", headers: headers_b }
 
       it "returns 404 (AC48)" do
         expect(response).to have_http_status(:not_found)
@@ -141,7 +145,7 @@ RSpec.describe "Api::V1::Portfolios", type: :request do
   describe "POST /api/v1/portfolios/:id/fitgap" do
     context "when requested by the owning tenant" do
       before do
-        post "/api/v1/portfolios/#{world.portfolio_a.id}/fitgap",
+        post "/api/v1/portfolios/#{world.portfolio_a.public_id}/fitgap",
              params: { vacancy_id: world.vacancy_a.id }, headers: headers_a
       end
 
@@ -156,7 +160,7 @@ RSpec.describe "Api::V1::Portfolios", type: :request do
 
     context "when requested by another tenant" do
       before do
-        post "/api/v1/portfolios/#{world.portfolio_a.id}/fitgap",
+        post "/api/v1/portfolios/#{world.portfolio_a.public_id}/fitgap",
              params: { vacancy_id: world.vacancy_a.id }, headers: headers_b
       end
 
@@ -177,7 +181,7 @@ RSpec.describe "Api::V1::Portfolios", type: :request do
   describe "POST /api/v1/portfolios/:id/regenerate_fitgap" do
     context "when requested by the owning tenant" do
       before do
-        post "/api/v1/portfolios/#{world.portfolio_a.id}/regenerate_fitgap",
+        post "/api/v1/portfolios/#{world.portfolio_a.public_id}/regenerate_fitgap",
              params: { vacancy_id: world.vacancy_a.id }, headers: headers_a
       end
 
@@ -198,7 +202,7 @@ RSpec.describe "Api::V1::Portfolios", type: :request do
 
     context "when requested by another tenant" do
       before do
-        post "/api/v1/portfolios/#{world.portfolio_a.id}/regenerate_fitgap",
+        post "/api/v1/portfolios/#{world.portfolio_a.public_id}/regenerate_fitgap",
              params: { vacancy_id: world.vacancy_a.id }, headers: headers_b
       end
 
@@ -218,7 +222,7 @@ RSpec.describe "Api::V1::Portfolios", type: :request do
 
   describe "GET /api/v1/portfolios/:id/fitgap/:vacancy_id (show_fitgap)" do
     context "when requested by the owning tenant" do
-      before { get "/api/v1/portfolios/#{world.portfolio_a.id}/fitgap/#{world.vacancy_a.id}", headers: headers_a }
+      before { get "/api/v1/portfolios/#{world.portfolio_a.public_id}/fitgap/#{world.vacancy_a.id}", headers: headers_a }
 
       it "returns 200 (AC49)" do
         expect(response).to have_http_status(:ok)
@@ -230,7 +234,7 @@ RSpec.describe "Api::V1::Portfolios", type: :request do
     end
 
     context "when requested by another tenant" do
-      before { get "/api/v1/portfolios/#{world.portfolio_a.id}/fitgap/#{world.vacancy_a.id}", headers: headers_b }
+      before { get "/api/v1/portfolios/#{world.portfolio_a.public_id}/fitgap/#{world.vacancy_a.id}", headers: headers_b }
 
       it "returns 404 (AC48)" do
         expect(response).to have_http_status(:not_found)
@@ -239,6 +243,40 @@ RSpec.describe "Api::V1::Portfolios", type: :request do
       it "leaks no report data (AC48)" do
         expect(response.parsed_body).not_to have_key("report")
       end
+    end
+  end
+
+  # #41: every one of these routes is now keyed on public_id, not the
+  # sequential id -- a request built with the old sequential id must 404,
+  # never silently fall back to a numeric lookup (and never a 500 from
+  # Postgres rejecting a non-UUID string against the `uuid` column; see
+  # HasPublicId#find_by_public_id!).
+  describe "addressed by the old sequential id instead of public_id" do
+    it "404s GET /api/v1/sessions/:id/portfolio" do
+      get "/api/v1/sessions/#{world.session_a.id}/portfolio", headers: headers_a
+      expect(response).to have_http_status(:not_found)
+    end
+
+    it "404s GET /api/v1/portfolios/:id/export" do
+      get "/api/v1/portfolios/#{world.portfolio_a.id}/export", headers: headers_a
+      expect(response).to have_http_status(:not_found)
+    end
+
+    it "404s POST /api/v1/portfolios/:id/fitgap" do
+      post "/api/v1/portfolios/#{world.portfolio_a.id}/fitgap",
+           params: { vacancy_id: world.vacancy_a.id }, headers: headers_a
+      expect(response).to have_http_status(:not_found)
+    end
+
+    it "404s POST /api/v1/portfolios/:id/regenerate_fitgap" do
+      post "/api/v1/portfolios/#{world.portfolio_a.id}/regenerate_fitgap",
+           params: { vacancy_id: world.vacancy_a.id }, headers: headers_a
+      expect(response).to have_http_status(:not_found)
+    end
+
+    it "404s GET /api/v1/portfolios/:id/fitgap/:vacancy_id" do
+      get "/api/v1/portfolios/#{world.portfolio_a.id}/fitgap/#{world.vacancy_a.id}", headers: headers_a
+      expect(response).to have_http_status(:not_found)
     end
   end
 
@@ -255,7 +293,7 @@ RSpec.describe "Api::V1::Portfolios", type: :request do
       tenant     = create_tenant
       headers    = auth_headers_for(tenant)
       assessment = create(:assessment, tenant_id: tenant.id)
-      session    = create(:session, tenant_id: tenant.id, assessment: assessment)
+      session    = create(:session, tenant_id: tenant.id, assessment: assessment).reload
       portfolio  = create(:portfolio, session: session)
 
       create(:portfolio_skill, portfolio: portfolio, skill_label: "Assessed Skill")
@@ -264,7 +302,7 @@ RSpec.describe "Api::V1::Portfolios", type: :request do
       create(:portfolio_skill, :not_assessed, portfolio: portfolio,
              skill_label: "Invalid Output Skill", status_reason: "invalid_model_output")
 
-      get "/api/v1/sessions/#{session.id}/portfolio", headers: headers
+      get "/api/v1/sessions/#{session.public_id}/portfolio", headers: headers
     end
 
     def skill_json_for(label)
@@ -299,7 +337,7 @@ RSpec.describe "Api::V1::Portfolios", type: :request do
   describe "GET /api/v1/sessions/:id/portfolio -- portfolio failure_code (#22)" do
     def session_for(tenant)
       assessment = create(:assessment, tenant_id: tenant.id)
-      create(:session, tenant_id: tenant.id, assessment: assessment)
+      create(:session, tenant_id: tenant.id, assessment: assessment).reload
     end
 
     %w[upstream_error invalid_output timeout unknown].each do |code|
@@ -311,7 +349,7 @@ RSpec.describe "Api::V1::Portfolios", type: :request do
           create(:portfolio, session: session, generation_status: "failed",
                  generation_error: "boom", failure_code: code)
 
-          get "/api/v1/sessions/#{session.id}/portfolio", headers: headers
+          get "/api/v1/sessions/#{session.public_id}/portfolio", headers: headers
         end
 
         it "returns the failure_code in the portfolio payload" do
@@ -331,7 +369,7 @@ RSpec.describe "Api::V1::Portfolios", type: :request do
         session = session_for(tenant)
         create(:portfolio, session: session)
 
-        get "/api/v1/sessions/#{session.id}/portfolio", headers: headers
+        get "/api/v1/sessions/#{session.public_id}/portfolio", headers: headers
       end
 
       it "returns a nil failure_code" do
@@ -349,7 +387,7 @@ RSpec.describe "Api::V1::Portfolios", type: :request do
 
       assessment = create(:assessment, tenant_id: tenant.id)
       session    = create(:session, tenant_id: tenant.id, assessment: assessment)
-      portfolio  = create(:portfolio, session: session)
+      portfolio  = create(:portfolio, session: session).reload
       vacancy    = create(:vacancy, tenant_id: tenant.id)
 
       overridden_skill = create(:portfolio_skill, portfolio: portfolio, skill_label: "Overridden Skill",
@@ -367,7 +405,7 @@ RSpec.describe "Api::V1::Portfolios", type: :request do
 
       FitGap::Engine.new(portfolio: portfolio, vacancy: vacancy, gemini_client: gemini_client).call
 
-      get "/api/v1/portfolios/#{portfolio.id}/fitgap/#{vacancy.id}", headers: headers
+      get "/api/v1/portfolios/#{portfolio.public_id}/fitgap/#{vacancy.id}", headers: headers
     end
 
     def row_for(label)
