@@ -9,8 +9,10 @@ export interface Assessment {
   updated_at?: string;
   skills?: AssessmentSkill[];
   latest_session?: {
+    id: number;
     status: "pending" | "active" | "ended";
     end_reason?: string | null;
+    connectivity_advisory_acknowledged?: string | null;
   };
 }
 
@@ -213,6 +215,17 @@ export interface CandidateInfo {
   role_title: string;
   time_limit_min: number;
   session_status: string;
+  // Ticket #29: exposes the candidate-facing session's end reason. `string |
+  // null` (not a literal union) to match the existing `Session.end_reason`
+  // convention above rather than inventing a second enum type — the actual
+  // backend values are `Session::END_REASONS` (manual_candidate |
+  // manual_assessor | all_covered | time_ceiling | error), or `null` for a
+  // session that hasn't ended yet.
+  end_reason: string | null;
+  // Ticket #29: the assessment's interview language, threaded down so
+  // candidate-facing screens can drive `useT()` (ticket #28) with it — e.g.
+  // the pre-hardware-check notice (ticket #31).
+  language: "en" | "id";
 }
 
 export interface PaginationMeta {
@@ -231,7 +244,14 @@ export type InterviewState =
   | "reconnecting"
   | "draining_audio"
   | "ending"
-  | "complete";
+  | "complete"
+  // Ticket #32 (F13): the candidate_info fetch's terminal failure modes,
+  // distinct from `complete` and from each other — a malformed/unknown
+  // token (404) is permanent and never retried, while any other failure
+  // (network blip, 5xx) is transient and offers a retry. See
+  // `InterviewPage`'s fetch effect.
+  | "invalid_token"
+  | "transient_error";
 
 export type InterviewSpeaker = "ai" | "candidate" | null;
 

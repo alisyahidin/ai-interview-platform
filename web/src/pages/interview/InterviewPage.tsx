@@ -16,11 +16,13 @@ import VoiceBars from "@/components/interview/VoiceBars";
 import InterviewTimer from "@/components/interview/InterviewTimer";
 import ConnectionStatus from "@/components/interview/ConnectionStatus";
 import TranscriptBubble from "@/components/interview/TranscriptBubble";
+import NoticeScreen from "@/components/interview/NoticeScreen";
 import { useAudioCapture } from "@/hooks/useAudioCapture";
 import { useAudioPlayback } from "@/hooks/useAudioPlayback";
 import { useAudioWebSocket } from "@/hooks/useAudioWebSocket";
 import { sessionsApi } from "@/services/sessions";
 import HardwareCheck from "@/components/HardwareCheck";
+import { useT } from "@/hooks/useT";
 import { CheckCircle, Mic, MicOff } from "lucide-react";
 import type { CandidateInfo, InterviewState, InterviewSpeaker, TranscriptTurn } from "@/types";
 
@@ -39,17 +41,82 @@ export default function InterviewPage() {
   const [micMuted, setMicMuted] = useState(false);
   const micMutedRef = useRef(false);
 
-  // Fetch candidate info
-  useEffect(() => {
+  // Copy for the terminal states below is sourced from the candidate's own
+  // session language (ticket #29). Before that's known (token never
+  // resolved, or the fetch hasn't succeeded yet), fall back to English.
+  const t = useT(candidateInfo?.language ?? "en");
+
+  // Pre-hardware-check consent notice (F14/AC27, ticket #31). One-time gate
+  // per session: the candidate-facing `candidate_info` endpoint doesn't
+  // expose `consent_given_at` (see ticket #29), so — per that ticket's own
+  // guidance to use judgment here — acknowledgment is tracked in
+  // `sessionStorage`, keyed by invite token, rather than requiring a new
+  // backend read just to re-derive a flag the candidate's own browser
+  // already knows. This still satisfies "not re-shown on a reload of the
+  // same session," since sessionStorage survives a reload of the same tab.
+  const consentStorageKey = token ? `interview_consent_ack:${token}` : null;
+  const [consentAcknowledged, setConsentAcknowledged] = useState(() => {
+    if (!consentStorageKey) return false;
+    try {
+      return sessionStorage.getItem(consentStorageKey) === "true";
+    } catch {
+      return false;
+    }
+  });
+  const [consentSubmitting, setConsentSubmitting] = useState(false);
+  const [consentError, setConsentError] = useState(false);
+
+  const handleAcknowledgeConsent = useCallback(async () => {
+    if (!token) return;
+    setConsentSubmitting(true);
+    setConsentError(false);
+    try {
+      await sessionsApi.acknowledgeConsent(token);
+      if (consentStorageKey) {
+        try {
+          sessionStorage.setItem(consentStorageKey, "true");
+        } catch {
+          // Best-effort — an in-memory fallback still blocks mic access
+          // this render, it just won't survive a reload.
+        }
+      }
+      setConsentAcknowledged(true);
+    } catch {
+      setConsentError(true);
+    } finally {
+      setConsentSubmitting(false);
+    }
+  }, [token, consentStorageKey]);
+
+  // Fetch candidate info. Three distinct outcomes (ticket #32 / F13):
+  //  - success, session already `ended` → "complete" (branches on
+  //    `end_reason` at render time — see the "complete" state below)
+  //  - success, session not yet ended → "idle" (pre-start / hardware check)
+  //  - failure with a 404 → "invalid_token": the token doesn't resolve to a
+  //    real session at all. Permanent — never retried, never rendered as
+  //    completion.
+  //  - failure for any other reason (network blip, 5xx, no response at all)
+  //    → "transient_error": offers a retry that just re-runs this fetch.
+  // A truly invalid token, a network blip, and a real completion used to be
+  // indistinguishable (single `.catch(() => setInterviewState("complete"))`)
+  // — this is what fixes that.
+  const fetchCandidateInfo = useCallback(() => {
     if (!token) return;
     sessionsApi.getCandidateInfo(token)
       .then((res) => {
         setCandidateInfo(res.data);
         setSessionId(res.data.session_id);
-        if (res.data.session_status === "ended") setInterviewState("complete");
+        setInterviewState(res.data.session_status === "ended" ? "complete" : "idle");
       })
-      .catch(() => setInterviewState("complete"));
+      .catch((error) => {
+        const status = error?.response?.status;
+        setInterviewState(status === 404 ? "invalid_token" : "transient_error");
+      });
   }, [token]);
+
+  useEffect(() => {
+    fetchCandidateInfo();
+  }, [fetchCandidateInfo]);
 
   const muteRef = useRef<(() => void) | null>(null);
   const unmuteRef = useRef<(() => void) | null>(null);
@@ -187,6 +254,22 @@ export default function InterviewPage() {
       ? "connected"
       : "reconnecting";
 
+  // ── State A0: Consent notice — gates everything below it, including the
+  // hardware check, so microphone access is never attempted before this
+  // (F14/AC27, ticket #31) ──────────────────────────────────────────────
+  if (interviewState === "idle" && !consentAcknowledged) {
+    return (
+      <div className="max-w-xl mx-auto px-4 py-8">
+        <NoticeScreen
+          language={candidateInfo?.language}
+          onAcknowledge={handleAcknowledgeConsent}
+          isSubmitting={consentSubmitting}
+          hasError={consentError}
+        />
+      </div>
+    );
+  }
+
   // ── State A: Pre-start ──────────────────────────────────────────────────
   if (interviewState === "idle") {
     return (
@@ -208,7 +291,11 @@ export default function InterviewPage() {
               <p>• The session will last up to {candidateInfo?.time_limit_min ?? "—"} minutes.</p>
               <p>• Your mic will be active throughout. You can end anytime.</p>
             </div>
-            <HardwareCheck onStart={() => { setHardwareCheckDone(true); startInterview(); }} />
+            <HardwareCheck
+              onStart={() => { setHardwareCheckDone(true); startInterview(); }}
+              token={token}
+              language={candidateInfo?.language}
+            />
           </div>
         ) : (
           <div className="space-y-4">
@@ -226,16 +313,68 @@ export default function InterviewPage() {
     );
   }
 
-  // ── State F: Complete ───────────────────────────────────────────────────
-  if (interviewState === "complete") {
+  // ── Terminal: invalid/malformed token ────────────────────────────────────
+  // Permanent — the token never resolved to a real session (404). Never
+  // offered a retry, and never rendered as completion (AC24).
+  if (interviewState === "invalid_token") {
     return (
       <div className="max-w-xl mx-auto px-4 py-16 text-center space-y-4">
-        <div className="text-4xl">✅</div>
-        <h2 className="text-xl font-semibold">Interview Complete</h2>
+        <div className="text-4xl">🔗</div>
+        <h2 className="text-xl font-semibold">{t("interview.terminal.invalidToken.title")}</h2>
         <p className="text-sm text-muted-foreground">
-          Thank you. The interview has been recorded.
-          <br />
-          The hiring team will review your results and follow up with you.
+          {t("interview.terminal.invalidToken.message")}
+        </p>
+      </div>
+    );
+  }
+
+  // ── Terminal: transient fetch failure ────────────────────────────────────
+  // Anything other than a 404 (network blip, backend hiccup, 5xx) — offers
+  // a retry that just re-runs the same fetch, distinct from both the
+  // invalid-link state above and the completion state below.
+  if (interviewState === "transient_error") {
+    return (
+      <div className="max-w-xl mx-auto px-4 py-16 text-center space-y-4">
+        <div className="text-4xl">⚠️</div>
+        <h2 className="text-xl font-semibold">{t("interview.terminal.transientError.title")}</h2>
+        <p className="text-sm text-muted-foreground">
+          {t("interview.terminal.transientError.message")}
+        </p>
+        <Button onClick={fetchCandidateInfo}>{t("common.retry")}</Button>
+      </div>
+    );
+  }
+
+  // ── State F: Complete ───────────────────────────────────────────────────
+  // Covers both a session finishing for the first time and reopening a
+  // session that already ended normally — same non-restartable view either
+  // way (AC26). The message shown branches on `end_reason`: an error-ended
+  // session gets an honest "it didn't complete" message instead of the
+  // success copy (AC25).
+  if (interviewState === "complete") {
+    const endedInError = candidateInfo?.end_reason === "error";
+    return (
+      <div className="max-w-xl mx-auto px-4 py-16 text-center space-y-4">
+        <div className="text-4xl">{endedInError ? "⚠️" : "✅"}</div>
+        <h2 className="text-xl font-semibold">
+          {endedInError
+            ? t("interview.terminal.complete.errorTitle")
+            : t("interview.terminal.complete.successTitle")}
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          {endedInError ? (
+            <>
+              {t("interview.terminal.complete.errorLine1")}
+              <br />
+              {t("interview.terminal.complete.errorLine2")}
+            </>
+          ) : (
+            <>
+              {t("interview.terminal.complete.successLine1")}
+              <br />
+              {t("interview.terminal.complete.successLine2")}
+            </>
+          )}
         </p>
       </div>
     );

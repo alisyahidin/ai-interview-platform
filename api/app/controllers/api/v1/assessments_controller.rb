@@ -88,9 +88,10 @@ module Api
           created_at:     assessment.created_at,
           updated_at:     assessment.updated_at,
           latest_session: latest && {
-            id:         latest.id,
-            status:     latest.status,
-            end_reason: latest.end_reason
+            id:                                 latest.id,
+            status:                             latest.status,
+            end_reason:                         latest.end_reason,
+            connectivity_advisory_acknowledged: latest.connectivity_advisory_acknowledged
           }
         }
       end
