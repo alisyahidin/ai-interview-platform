@@ -149,7 +149,9 @@ export default function AssessmentListPage() {
         </div>
       )}
 
-      {/* Re-invite result — reuses the invite-link-sharing pattern from AssessmentInvitePage */}
+      {/* Re-invite result. This page keeps showing the fresh link in a dialog,
+          unlike the Assessment's own candidate list, where a new invite is
+          simply a row in the table (#49). */}
       <Dialog
         open={!!reinviteResult}
         onOpenChange={(open) => {
