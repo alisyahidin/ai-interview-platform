@@ -1,8 +1,8 @@
 {
   "data": {
     "portfolio": {
-      "id": 1,
-      "session_id": 1,
+      "public_id": "00000000-0000-0000-0000-000000000001",
+      "session_public_id": "00000000-0000-0000-0000-000000000001",
       "candidate_id": 1,
       "generation_status": "complete",
       "generated_at": "2026-01-01T00:00:00.000Z",

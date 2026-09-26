@@ -11,7 +11,9 @@ export interface Assessment {
   updated_at?: string;
   skills?: AssessmentSkill[];
   latest_session?: {
-    id: number;
+    // #41: latest_session is a *session*, addressed by its public_id, not
+    // the sequential id -- the backend no longer sends `id` here.
+    public_id: string;
     status: "pending" | "active" | "ended";
     end_reason?: string | null;
     connectivity_advisory_acknowledged?: string | null;
@@ -36,7 +38,9 @@ export interface AssessmentSkill {
 }
 
 export interface Session {
-  id: number;
+  // #41: sessions are addressed by public_id end-to-end; the backend no
+  // longer sends the sequential id in session_json.
+  public_id: string;
   assessment_id: number;
   tenant_id?: number;
   candidate_id?: number;
@@ -85,8 +89,11 @@ export interface TranscriptTurn {
 export type FailureCode = "upstream_error" | "invalid_output" | "timeout" | "unknown";
 
 export interface Portfolio {
-  id: number;
-  session_id: number;
+  // #41: portfolios are addressed by public_id end-to-end; the backend no
+  // longer sends the sequential id (its own, or the parent session's) in
+  // portfolio_json.
+  public_id: string;
+  session_public_id: string;
   candidate_id?: number;
   generation_status: "pending" | "generating" | "complete" | "failed";
   generated_at?: string;

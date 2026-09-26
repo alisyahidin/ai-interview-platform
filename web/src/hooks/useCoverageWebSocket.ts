@@ -42,7 +42,7 @@ interface UseCoverageWebSocketResult {
   reconnect: () => void;
 }
 
-export function useCoverageWebSocket(sessionId: number): UseCoverageWebSocketResult {
+export function useCoverageWebSocket(sessionId: string): UseCoverageWebSocketResult {
   const [coverageMap, setCoverageMap] = useState<CoverageMap | null>(null);
   const [sessionEnded, setSessionEnded] = useState(false);
   const [sessionEndReason, setSessionEndReason] = useState<string | null>(null);

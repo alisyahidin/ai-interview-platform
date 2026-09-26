@@ -40,7 +40,7 @@ interface LiveMonitorData {
   initialTranscript: TranscriptTurn[];
 }
 
-async function fetchLiveMonitorData(sessionId: number): Promise<{ data: LiveMonitorData }> {
+async function fetchLiveMonitorData(sessionId: string): Promise<{ data: LiveMonitorData }> {
   const [sRes, tRes] = await Promise.all([
     sessionsApi.get(sessionId),
     sessionsApi.getTranscript(sessionId),
@@ -205,7 +205,6 @@ function LiveMonitorContent({
   initialTranscript,
   onViewPortfolio,
 }: LiveMonitorContentProps) {
-  const numericSessionId = Number(sessionId);
   const [transcript, setTranscript] = useState<TranscriptTurn[]>(() =>
     initialTranscript.slice(-10)
   );
@@ -224,7 +223,7 @@ function LiveMonitorContent({
   // `LiveMonitorPage`), so this is the only place the coverage WebSocket is
   // ever constructed — a non-active session never reaches this component.
   const { coverageMap, sessionEnded, sessionEndReason, connectionState, lastUpdatedAt, reconnect } =
-    useCoverageWebSocket(numericSessionId);
+    useCoverageWebSocket(sessionId);
 
   // On session_ended from WS — stop polling, update local state
   useEffect(() => {
@@ -234,12 +233,12 @@ function LiveMonitorContent({
   }, [sessionEnded]);
 
   const fetchNewTurns = useCallback(async () => {
-    const res = await sessionsApi.getTranscript(numericSessionId, lastTurnRef.current + 1);
+    const res = await sessionsApi.getTranscript(sessionId, lastTurnRef.current + 1);
     if (res.data.turns.length > 0) {
       setTranscript((prev) => [...prev, ...res.data.turns].slice(-10));
       lastTurnRef.current = res.data.turns[res.data.turns.length - 1].turn_number;
     }
-  }, [numericSessionId]);
+  }, [sessionId]);
 
   const { isStalled: pollingStalled, retry: retryPolling } = usePolling(
     fetchNewTurns,
@@ -250,7 +249,7 @@ function LiveMonitorContent({
   const handleEndSession = async () => {
     setEnding(true);
     try {
-      await sessionsApi.endSession(numericSessionId);
+      await sessionsApi.endSession(sessionId);
       onViewPortfolio();
     } catch {
       setEnding(false);
@@ -448,9 +447,8 @@ function LiveMonitorContent({
 export default function LiveMonitorPage() {
   const { id, sessionId } = useParams<{ id: string; sessionId: string }>();
   const navigate = useNavigate();
-  const numericSessionId = Number(sessionId);
 
-  const fetcher = useCallback(() => fetchLiveMonitorData(numericSessionId), [numericSessionId]);
+  const fetcher = useCallback(() => fetchLiveMonitorData(sessionId!), [sessionId]);
   const { resource } = useResource(fetcher);
 
   const goToPortfolio = useCallback(

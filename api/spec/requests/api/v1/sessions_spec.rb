@@ -90,6 +90,50 @@ RSpec.describe "Api::V1::Sessions", type: :request do
     end
   end
 
+  # #41: the assessor-facing show action is addressed by public_id, not the
+  # sequential id -- the sequential id must never round-trip back out in the
+  # response, and a request keyed on it (or on another tenant's session)
+  # must 404, not fall back to a numeric lookup or leak data.
+  describe "GET /api/v1/sessions/:public_id (show)" do
+    def a_session
+      # .reload -- public_id (#37) is a DB-side gen_random_uuid() default;
+      # Rails doesn't read it back onto the in-memory object without one.
+      @a_session ||= create(:session, tenant_id: tenant_a.id, assessment: assessment_a, status: "active").reload
+    end
+
+    context "when requested by the owning tenant" do
+      before { get "/api/v1/sessions/#{a_session.public_id}", headers: headers_a }
+
+      it "returns 200" do
+        expect(response).to have_http_status(:ok)
+      end
+
+      it "keys the session on public_id" do
+        expect(response.parsed_body["session"]["public_id"]).to eq(a_session.public_id)
+      end
+
+      it "returns no sequential id" do
+        expect(response.parsed_body["session"]).not_to have_key("id")
+      end
+    end
+
+    context "when requested by another tenant" do
+      before { get "/api/v1/sessions/#{a_session.public_id}", headers: headers_b }
+
+      it "returns 404" do
+        expect(response).to have_http_status(:not_found)
+      end
+    end
+
+    context "when addressed by the session's old sequential id instead of its public_id" do
+      before { get "/api/v1/sessions/#{a_session.id}", headers: headers_a }
+
+      it "returns 404" do
+        expect(response).to have_http_status(:not_found)
+      end
+    end
+  end
+
   describe "POST /sessions/:token/consent (acknowledge_consent)" do
     def pending_session
       @pending_session ||= create(:session, tenant_id: tenant_a.id, assessment: assessment_a, status: "pending")
@@ -193,11 +237,14 @@ RSpec.describe "Api::V1::Sessions", type: :request do
       end
 
       def reinvite!
-        post "/api/v1/sessions/#{failed_session.id}/reinvite", headers: headers_a
+        post "/api/v1/sessions/#{failed_session.public_id}/reinvite", headers: headers_a
       end
 
       def new_session
-        Session.order(:id).last
+        # .reload -- see the comment on original_attrs above: public_id is a
+        # DB-side default not read back onto a freshly-loaded record's
+        # in-memory attributes without one.
+        Session.order(:id).last.reload
       end
 
       before do
@@ -207,6 +254,14 @@ RSpec.describe "Api::V1::Sessions", type: :request do
 
       it "returns 201" do
         expect(response).to have_http_status(:created)
+      end
+
+      it "keys the session response on public_id" do
+        expect(response.parsed_body["session"]["public_id"]).to eq(new_session.public_id)
+      end
+
+      it "returns no sequential id in the session response" do
+        expect(response.parsed_body["session"]).not_to have_key("id")
       end
 
       it "creates exactly one new session row" do
@@ -250,11 +305,12 @@ RSpec.describe "Api::V1::Sessions", type: :request do
 
     context "when the session is pending (not terminal)" do
       def pending_session
-        @pending_session ||= create(:session, tenant_id: tenant_a.id, assessment: assessment_a, status: "pending")
+        @pending_session ||= create(:session, tenant_id: tenant_a.id, assessment: assessment_a,
+                                               status: "pending").reload
       end
 
       def reinvite!
-        post "/api/v1/sessions/#{pending_session.id}/reinvite", headers: headers_a
+        post "/api/v1/sessions/#{pending_session.public_id}/reinvite", headers: headers_a
       end
 
       before { reinvite! }
@@ -271,11 +327,12 @@ RSpec.describe "Api::V1::Sessions", type: :request do
 
     context "when the session is active (not terminal)" do
       def active_session
-        @active_session ||= create(:session, tenant_id: tenant_a.id, assessment: assessment_a, status: "active")
+        @active_session ||= create(:session, tenant_id: tenant_a.id, assessment: assessment_a,
+                                              status: "active").reload
       end
 
       def reinvite!
-        post "/api/v1/sessions/#{active_session.id}/reinvite", headers: headers_a
+        post "/api/v1/sessions/#{active_session.public_id}/reinvite", headers: headers_a
       end
 
       before { reinvite! }
@@ -293,11 +350,11 @@ RSpec.describe "Api::V1::Sessions", type: :request do
     context "when the session ended successfully (all_covered, not a failure)" do
       def completed_session
         @completed_session ||= create(:session, tenant_id: tenant_a.id, assessment: assessment_a,
-                                                 status: "ended", end_reason: "all_covered")
+                                                 status: "ended", end_reason: "all_covered").reload
       end
 
       def reinvite!
-        post "/api/v1/sessions/#{completed_session.id}/reinvite", headers: headers_a
+        post "/api/v1/sessions/#{completed_session.public_id}/reinvite", headers: headers_a
       end
 
       before { reinvite! }
@@ -315,11 +372,11 @@ RSpec.describe "Api::V1::Sessions", type: :request do
     context "when the session ended manually (candidate/assessor closed it, not a failure)" do
       def manual_session
         @manual_session ||= create(:session, tenant_id: tenant_a.id, assessment: assessment_a,
-                                              status: "ended", end_reason: "manual_candidate")
+                                              status: "ended", end_reason: "manual_candidate").reload
       end
 
       def reinvite!
-        post "/api/v1/sessions/#{manual_session.id}/reinvite", headers: headers_a
+        post "/api/v1/sessions/#{manual_session.public_id}/reinvite", headers: headers_a
       end
 
       before { reinvite! }
@@ -337,11 +394,11 @@ RSpec.describe "Api::V1::Sessions", type: :request do
     context "when the session ended at the time ceiling (not an error)" do
       def ceiling_session
         @ceiling_session ||= create(:session, tenant_id: tenant_a.id, assessment: assessment_a,
-                                               status: "ended", end_reason: "time_ceiling")
+                                               status: "ended", end_reason: "time_ceiling").reload
       end
 
       def reinvite!
-        post "/api/v1/sessions/#{ceiling_session.id}/reinvite", headers: headers_a
+        post "/api/v1/sessions/#{ceiling_session.public_id}/reinvite", headers: headers_a
       end
 
       before { reinvite! }
@@ -359,11 +416,11 @@ RSpec.describe "Api::V1::Sessions", type: :request do
     context "when requested by another tenant" do
       def failed_session
         @failed_session ||= create(:session, tenant_id: tenant_a.id, assessment: assessment_a,
-                                              status: "ended", end_reason: "error")
+                                              status: "ended", end_reason: "error").reload
       end
 
       def reinvite!
-        post "/api/v1/sessions/#{failed_session.id}/reinvite", headers: headers_b
+        post "/api/v1/sessions/#{failed_session.public_id}/reinvite", headers: headers_b
       end
 
       before { reinvite! }
@@ -379,10 +436,34 @@ RSpec.describe "Api::V1::Sessions", type: :request do
     end
 
     context "when the session does not exist" do
-      before { post "/api/v1/sessions/999999/reinvite", headers: headers_a }
+      before { post "/api/v1/sessions/00000000-0000-0000-0000-000000000000/reinvite", headers: headers_a }
 
       it "returns 404" do
         expect(response).to have_http_status(:not_found)
+      end
+    end
+
+    # #41: a request built with the session's old sequential id (instead of
+    # its public_id) must 404, not silently fall back to a numeric lookup.
+    context "when addressed by the session's old sequential id instead of its public_id" do
+      def failed_session
+        @failed_session ||= create(:session, tenant_id: tenant_a.id, assessment: assessment_a,
+                                              status: "ended", end_reason: "error")
+      end
+
+      def reinvite!
+        post "/api/v1/sessions/#{failed_session.id}/reinvite", headers: headers_a
+      end
+
+      before { reinvite! }
+
+      it "returns 404" do
+        expect(response).to have_http_status(:not_found)
+      end
+
+      it "creates no new session" do
+        failed_session
+        expect { reinvite! }.not_to change(Session, :count)
       end
     end
 
@@ -423,11 +504,11 @@ RSpec.describe "Api::V1::Sessions", type: :request do
     # resurrected or reassigned, after a re-invite happens.
     def failed_session
       @failed_session ||= create(:session, tenant_id: tenant_a.id, assessment: assessment_a,
-                                            status: "ended", end_reason: "error")
+                                            status: "ended", end_reason: "error").reload
     end
 
     before do
-      post "/api/v1/sessions/#{failed_session.id}/reinvite", headers: headers_a
+      post "/api/v1/sessions/#{failed_session.public_id}/reinvite", headers: headers_a
       get "/api/v1/sessions/#{failed_session.invite_token}/candidate"
     end
 

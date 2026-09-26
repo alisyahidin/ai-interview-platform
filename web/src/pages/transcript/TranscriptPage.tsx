@@ -18,7 +18,7 @@ interface SessionResponse {
 export default function TranscriptPage() {
   const { id, sessionId } = useParams<{ id: string; sessionId: string }>();
 
-  const fetchSession = useCallback(() => sessionsApi.get(Number(sessionId)), [sessionId]);
+  const fetchSession = useCallback(() => sessionsApi.get(sessionId!), [sessionId]);
   const { resource } = useResource<SessionResponse>(fetchSession);
 
   return (
@@ -59,7 +59,7 @@ function TranscriptPageContent({
 
   useEffect(() => {
     sessionsApi
-      .getTranscript(Number(sessionId))
+      .getTranscript(sessionId)
       .then((tRes) => {
         setTurns(tRes.data.turns);
       })

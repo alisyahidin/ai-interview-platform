@@ -49,25 +49,31 @@ function mockAssessmentsList(assessments: unknown[]) {
   );
 }
 
+// #41: latest_session is a *session*, addressed by public_id, not a
+// sequential id -- opaque, non-numeric strings here prove the page doesn't
+// secretly parse this as a number anywhere on the reinvite path.
+const FAILED_SESSION_PUBLIC_ID = "session-public-100";
+const NEW_SESSION_PUBLIC_ID = "session-public-101";
+
 const failedAssessment = {
   public_id: PUBLIC_ID_1,
   name: "Backend Engineer",
   time_limit_min: 45,
-  latest_session: { id: 100, status: "ended", end_reason: "error" },
+  latest_session: { public_id: FAILED_SESSION_PUBLIC_ID, status: "ended", end_reason: "error" },
 };
 
 const activeAssessment = {
   public_id: PUBLIC_ID_2,
   name: "Frontend Engineer",
   time_limit_min: 30,
-  latest_session: { id: 200, status: "active", end_reason: null },
+  latest_session: { public_id: "session-public-200", status: "active", end_reason: null },
 };
 
 const completedAssessment = {
   public_id: PUBLIC_ID_3,
   name: "QA Engineer",
   time_limit_min: 60,
-  latest_session: { id: 300, status: "ended", end_reason: "all_covered" },
+  latest_session: { public_id: "session-public-300", status: "ended", end_reason: "all_covered" },
 };
 
 describe("AssessmentListPage re-invite action (#33)", () => {
@@ -94,11 +100,11 @@ describe("AssessmentListPage re-invite action (#33)", () => {
     const user = userEvent.setup();
 
     server.use(
-      http.post(`${API_BASE}/sessions/100/reinvite`, () =>
+      http.post(`${API_BASE}/sessions/${FAILED_SESSION_PUBLIC_ID}/reinvite`, () =>
         HttpResponse.json(
           {
             session: {
-              id: 101,
+              public_id: NEW_SESSION_PUBLIC_ID,
               assessment_id: 1,
               tenant_id: 1,
               candidate_id: 42,
@@ -131,7 +137,7 @@ describe("AssessmentListPage re-invite action (#33)", () => {
     const user = userEvent.setup();
 
     server.use(
-      http.post(`${API_BASE}/sessions/100/reinvite`, () =>
+      http.post(`${API_BASE}/sessions/${FAILED_SESSION_PUBLIC_ID}/reinvite`, () =>
         HttpResponse.json(
           {
             errors: [
@@ -176,7 +182,7 @@ describe("AssessmentListPage connectivity advisory note", () => {
         name: "Backend Engineer",
         time_limit_min: 45,
         latest_session: {
-          id: 100,
+          public_id: "session-public-100",
           status: "active",
           end_reason: null,
           connectivity_advisory_acknowledged: "2026-09-26T10:00:00.000Z",
@@ -197,7 +203,7 @@ describe("AssessmentListPage connectivity advisory note", () => {
         name: "Frontend Engineer",
         time_limit_min: 30,
         latest_session: {
-          id: 200,
+          public_id: "session-public-200",
           status: "active",
           end_reason: null,
           connectivity_advisory_acknowledged: null,
@@ -218,7 +224,7 @@ describe("AssessmentListPage connectivity advisory note", () => {
         name: "QA Engineer",
         time_limit_min: 60,
         latest_session: {
-          id: 300,
+          public_id: "session-public-300",
           status: "ended",
           end_reason: "error",
           connectivity_advisory_acknowledged: "2026-09-26T10:00:00.000Z",
@@ -239,7 +245,7 @@ describe("AssessmentListPage connectivity advisory note", () => {
         name: "Data Engineer",
         time_limit_min: 60,
         latest_session: {
-          id: 400,
+          public_id: "session-public-400",
           status: "ended",
           end_reason: "all_covered",
           connectivity_advisory_acknowledged: "2026-09-26T10:00:00.000Z",

@@ -30,8 +30,8 @@ function SessionRow({
   session: Session;
   index: number;
   assessmentId: string;
-  onCopy: (id: number) => void;
-  copiedId: number | null;
+  onCopy: (id: string) => void;
+  copiedId: string | null;
 }) {
   const navigate = useNavigate();
   const isLive = session.status === "active";
@@ -87,9 +87,9 @@ function SessionRow({
               variant="ghost"
               size="sm"
               className="h-7 px-2 text-xs"
-              onClick={() => onCopy(session.id)}
+              onClick={() => onCopy(session.public_id)}
             >
-              {copiedId === session.id ? (
+              {copiedId === session.public_id ? (
                 <><Check className="h-3 w-3 mr-1" /> Copied</>
               ) : (
                 <><Copy className="h-3 w-3 mr-1" /> Copy link</>
@@ -101,7 +101,7 @@ function SessionRow({
               variant="outline"
               size="sm"
               className="h-7 px-2 text-xs"
-              onClick={() => navigate(`/assessments/${assessmentId}/sessions/${session.id}/monitor`)}
+              onClick={() => navigate(`/assessments/${assessmentId}/sessions/${session.public_id}/monitor`)}
             >
               <Eye className="h-3 w-3 mr-1" /> Monitor
             </Button>
@@ -111,7 +111,7 @@ function SessionRow({
               variant="outline"
               size="sm"
               className="h-7 px-2 text-xs"
-              onClick={() => navigate(`/assessments/${assessmentId}/sessions/${session.id}/portfolio`)}
+              onClick={() => navigate(`/assessments/${assessmentId}/sessions/${session.public_id}/portfolio`)}
             >
               Results
             </Button>
@@ -130,7 +130,7 @@ export default function AssessmentInvitePage() {
   const [loading, setLoading] = useState(true);
   const [creatingSession, setCreatingSession] = useState(false);
   const [newSession, setNewSession] = useState<Session | null>(null);
-  const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const [newSessionCopied, setNewSessionCopied] = useState(false);
   const [showInviteDialog, setShowInviteDialog] = useState(false);
   const [candidateNameInput, setCandidateNameInput] = useState("");
@@ -177,7 +177,7 @@ export default function AssessmentInvitePage() {
     }
   };
 
-  const copyLink = (session: Session, id: number) => {
+  const copyLink = (session: Session, id: string) => {
     navigator.clipboard.writeText(session.invite_url);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
@@ -309,12 +309,12 @@ export default function AssessmentInvitePage() {
             <CardContent className="p-0 divide-y">
               {sessions.map((session, i) => (
                 <SessionRow
-                  key={session.id}
+                  key={session.public_id}
                   session={session}
                   index={sessions.length - i}
                   assessmentId={id!}
                   onCopy={(sid) => {
-                    const s = sessions.find((x) => x.id === sid);
+                    const s = sessions.find((x) => x.public_id === sid);
                     if (s) copyLink(s, sid);
                   }}
                   copiedId={copiedId}

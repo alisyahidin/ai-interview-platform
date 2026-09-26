@@ -2,7 +2,8 @@
 
 require 'faye/websocket'
 
-# Rack middleware for assessor live coverage monitoring at /ws/sessions/:id/coverage.
+# Rack middleware for assessor live coverage monitoring at
+# /ws/sessions/:public_id/coverage (#41 — public_id, not the sequential id).
 # Server-push only: subscribes to Redis pub/sub and forwards coverage updates to the assessor.
 class CoverageWebSocketMiddleware
   COVERAGE_PATH_PATTERN = %r{\A/ws/sessions/([^/]+)/coverage\z}
@@ -17,13 +18,13 @@ class CoverageWebSocketMiddleware
 
     return @app.call(env) unless match && Faye::WebSocket.websocket?(env)
 
-    session_id = match[1]
-    handle_coverage_websocket(env, session_id)
+    public_id = match[1]
+    handle_coverage_websocket(env, public_id)
   end
 
   private
 
-  def handle_coverage_websocket(env, session_id)
+  def handle_coverage_websocket(env, public_id)
     ws = Faye::WebSocket.new(env, nil, ping: 30)
 
     redis_sub = nil  # track subscription Redis instance for cleanup
@@ -33,11 +34,15 @@ class CoverageWebSocketMiddleware
       # If no Authorization header is present, wait for a { type: "auth", token }
       # message — this matches the pattern used by the audio WS for browser clients
       # that can't set WebSocket headers.
-      session, error = authenticate_assessor(env, session_id)
+      session, error = authenticate_assessor(env, public_id)
       next if error  # wait for auth message
 
       send_current_state(ws, session)
-      redis_sub = subscribe_to_coverage_updates(ws, session_id)
+      # Subscribe using the session's real (internal, non-public) id -- this
+      # is what CoverageAnalyzerWorker/StartHandler/EndHandler publish on
+      # (see the `coverage:#{session.id}` channel), which is independent of
+      # whatever identifier the client's URL used to look the session up.
+      redis_sub = subscribe_to_coverage_updates(ws, session.id)
     end
 
     ws.on :message do |event|
@@ -50,7 +55,7 @@ class CoverageWebSocketMiddleware
       next if redis_sub
 
       token   = message['token'].to_s
-      session, error = authenticate_assessor_by_token(token, session_id)
+      session, error = authenticate_assessor_by_token(token, public_id)
 
       if error
         ws.send({ type: 'error', code: 'auth_failed', message: error }.to_json)
@@ -59,11 +64,11 @@ class CoverageWebSocketMiddleware
       end
 
       send_current_state(ws, session)
-      redis_sub = subscribe_to_coverage_updates(ws, session_id)
+      redis_sub = subscribe_to_coverage_updates(ws, session.id)
     end
 
     ws.on :close do |_event|
-      Rails.logger.debug { "[CoverageWS] Assessor disconnected from session #{session_id}" }
+      Rails.logger.debug { "[CoverageWS] Assessor disconnected from session #{public_id}" }
       # H4 fix: unsubscribe so the blocking Thread exits cleanly instead of
       # hanging forever waiting for the next message.
       Thread.new { redis_sub&.unsubscribe rescue nil }
@@ -115,14 +120,14 @@ class CoverageWebSocketMiddleware
     redis
   end
 
-  def authenticate_assessor(env, session_id)
+  def authenticate_assessor(env, public_id)
     auth_header = env['HTTP_AUTHORIZATION']
     return [nil, 'Missing authorization'] if auth_header.blank?
 
-    authenticate_assessor_by_token(auth_header.split(' ').last, session_id)
+    authenticate_assessor_by_token(auth_header.split(' ').last, public_id)
   end
 
-  def authenticate_assessor_by_token(token, session_id)
+  def authenticate_assessor_by_token(token, public_id)
     payload = JsonWebToken.decode(token)
 
     # Tenant comes from the token's user, not a (now-removed) `scheme`
@@ -130,7 +135,7 @@ class CoverageWebSocketMiddleware
     user = User.find_by(id: payload[:user_id])
     return [nil, 'Invalid tenant'] unless user&.organization_id
 
-    session = Session.unscoped.where(tenant_id: user.organization_id).find_by(id: session_id)
+    session = Session.unscoped.where(tenant_id: user.organization_id).find_by(public_id: public_id)
     return [nil, 'Session not found'] unless session
 
     [session, nil]

@@ -76,7 +76,7 @@ afterEach(() => {
 
 describe("useCoverageWebSocket", () => {
   it("starts in connecting state and moves to connected on open", () => {
-    const { result } = renderHook(() => useCoverageWebSocket(42));
+    const { result } = renderHook(() => useCoverageWebSocket("42"));
 
     expect(result.current.connectionState).toBe("connecting");
     expect(MockWebSocket.instances).toHaveLength(1);
@@ -89,7 +89,7 @@ describe("useCoverageWebSocket", () => {
   });
 
   it("moves to reconnecting on close, then to gave-up only once the full 3-attempt schedule is exhausted", () => {
-    const { result } = renderHook(() => useCoverageWebSocket(42));
+    const { result } = renderHook(() => useCoverageWebSocket("42"));
 
     act(() => MockWebSocket.latest().triggerOpen());
     expect(result.current.connectionState).toBe("connected");
@@ -136,7 +136,7 @@ describe("useCoverageWebSocket", () => {
   });
 
   it("treats onerror the same as onclose for the reconnect/gave-up transition, without double-scheduling", () => {
-    const { result } = renderHook(() => useCoverageWebSocket(42));
+    const { result } = renderHook(() => useCoverageWebSocket("42"));
 
     act(() => MockWebSocket.latest().triggerOpen());
 
@@ -155,7 +155,7 @@ describe("useCoverageWebSocket", () => {
   });
 
   it("resets the attempt counter and starts a fresh connection when reconnect() is called from gave-up", () => {
-    const { result } = renderHook(() => useCoverageWebSocket(42));
+    const { result } = renderHook(() => useCoverageWebSocket("42"));
 
     act(() => MockWebSocket.latest().triggerOpen());
     act(() => MockWebSocket.latest().triggerClose());
@@ -195,7 +195,7 @@ describe("useCoverageWebSocket", () => {
   });
 
   it("sets lastUpdatedAt only on a real coverage_update message, never on connection-state changes alone", () => {
-    const { result } = renderHook(() => useCoverageWebSocket(42));
+    const { result } = renderHook(() => useCoverageWebSocket("42"));
 
     expect(result.current.lastUpdatedAt).toBeNull();
 
@@ -225,7 +225,7 @@ describe("useCoverageWebSocket", () => {
   });
 
   it("never changes connection state on a long silent gap while the socket stays open (no timeout-based staleness)", () => {
-    const { result } = renderHook(() => useCoverageWebSocket(42));
+    const { result } = renderHook(() => useCoverageWebSocket("42"));
 
     act(() => MockWebSocket.latest().triggerOpen());
     expect(result.current.connectionState).toBe("connected");
@@ -242,7 +242,7 @@ describe("useCoverageWebSocket", () => {
   });
 
   it("keeps sessionEnded/sessionEndReason and coverageMap handling intact", () => {
-    const { result } = renderHook(() => useCoverageWebSocket(7));
+    const { result } = renderHook(() => useCoverageWebSocket("7"));
 
     act(() => MockWebSocket.latest().triggerOpen());
     act(() => {

@@ -12,6 +12,10 @@ import LiveMonitorPage from "./LiveMonitorPage";
 // or `usePolling`'s own backoff matrix (usePolling.test.ts).
 
 const API_BASE = "http://localhost:3001/api/v1";
+// #41: sessions are addressed by public_id, not a sequential id -- an
+// opaque, non-numeric string here proves the page doesn't secretly parse it
+// as a number anywhere on the fetch/WS path.
+const SESSION_PUBLIC_ID = "session-public-1";
 
 // Transcript polling's own backoff/stall behavior is covered exhaustively in
 // usePolling.test.ts; here we only prove LiveMonitorPage wires the stalled
@@ -83,11 +87,11 @@ class MockWebSocket {
 
 function mockSession(status: "pending" | "active" | "ended") {
   server.use(
-    http.get(`${API_BASE}/sessions/1`, () =>
+    http.get(`${API_BASE}/sessions/${SESSION_PUBLIC_ID}`, () =>
       HttpResponse.json({
         data: {
           session: {
-            id: 1,
+            public_id: SESSION_PUBLIC_ID,
             assessment_id: 1,
             invite_token: "tok-1",
             invite_url: "https://example.com/invite/tok-1",
@@ -98,7 +102,7 @@ function mockSession(status: "pending" | "active" | "ended") {
         },
       })
     ),
-    http.get(`${API_BASE}/sessions/1/transcript`, () =>
+    http.get(`${API_BASE}/sessions/${SESSION_PUBLIC_ID}/transcript`, () =>
       HttpResponse.json({ data: { turns: [], total: 0 } })
     )
   );
@@ -106,7 +110,7 @@ function mockSession(status: "pending" | "active" | "ended") {
 
 function renderPage() {
   return render(
-    <MemoryRouter initialEntries={["/assessments/1/sessions/1/monitor"]}>
+    <MemoryRouter initialEntries={[`/assessments/1/sessions/${SESSION_PUBLIC_ID}/monitor`]}>
       <Routes>
         <Route path="/assessments/:id/sessions/:sessionId/monitor" element={<LiveMonitorPage />} />
       </Routes>
