@@ -189,17 +189,19 @@ RSpec.describe "Api::V1::Authentication", type: :request do
         end
 
         it "scopes a subsequent request to that user's own organization's data" do
-          expect(scoped_assessment_ids).to include(own_assessment.id)
+          expect(scoped_assessment_public_ids).to include(own_assessment.public_id)
         end
 
         it "excludes another organization's data from that subsequent request" do
-          expect(scoped_assessment_ids).not_to include(other_assessment.id)
+          expect(scoped_assessment_public_ids).not_to include(other_assessment.public_id)
         end
 
-        def scoped_assessment_ids
+        # #40 switched assessments to be addressed/keyed by `public_id`; the
+        # sequential `id` no longer appears in this response at all.
+        def scoped_assessment_public_ids
           token = response.parsed_body["token"]
           get "/api/v1/assessments", headers: { "Authorization" => "Bearer #{token}" }
-          response.parsed_body["assessments"].pluck("id")
+          response.parsed_body["assessments"].pluck("public_id")
         end
       end
     end
