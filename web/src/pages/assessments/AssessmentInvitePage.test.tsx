@@ -1,11 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route, useParams } from "react-router-dom";
 import { http, HttpResponse } from "msw";
 import { axe } from "vitest-axe";
 import { server } from "@/mocks/server";
-import SessionTable from "@/components/sessions/SessionTable";
 import AssessmentInvitePage from "./AssessmentInvitePage";
 import type { Session } from "@/types";
 
@@ -22,8 +21,17 @@ let pollingResult: { isStalled: boolean; retry: () => void; failureCount: number
   intervalMs: 5000,
 };
 
+// The callback the page hands the hook, captured rather than scheduled, so no
+// page test exercises backoff. It is here for the one case that needs a refresh
+// to land: the fresh-invite highlight has to react to what *polling* reports,
+// and inviting is the only other writer of the session list.
+let pollOnce: (() => void) | null = null;
+
 vi.mock("@/hooks/usePolling", () => ({
-  usePolling: () => pollingResult,
+  usePolling: (refresh: () => void) => {
+    pollOnce = refresh;
+    return pollingResult;
+  },
 }));
 
 function renderPage() {
@@ -125,13 +133,21 @@ async function renderWithSessions(sessions: Session[]) {
   return view;
 }
 
+// The status vocabulary now appears in two places on the page: on the pill in a
+// row, and on the card and tab that count and filter by that status. These
+// cases are about the pill, so they look inside the table rather than at the
+// page — the same assertion, aimed at the row.
+function pills() {
+  return within(screen.getByRole("table", { name: "Candidate sessions" }));
+}
+
 describe("AssessmentInvitePage session status pills", () => {
   it("reads a pending session as Awaiting candidate", async () => {
     await renderWithSessions([
       makeSession({ id: 10, status: "pending", candidate_name: "Budi Santoso" }),
     ]);
 
-    expect(screen.getByText("Awaiting candidate")).toBeInTheDocument();
+    expect(pills().getByText("Awaiting candidate")).toBeInTheDocument();
   });
 
   it("reads an active session as Live", async () => {
@@ -139,7 +155,7 @@ describe("AssessmentInvitePage session status pills", () => {
       makeSession({ id: 11, status: "active", candidate_name: "Siti Aminah" }),
     ]);
 
-    expect(screen.getByText("Live")).toBeInTheDocument();
+    expect(pills().getByText("Live")).toBeInTheDocument();
   });
 
   it("reads an ended session as Completed, whatever non-error end reason it carries", async () => {
@@ -148,8 +164,8 @@ describe("AssessmentInvitePage session status pills", () => {
       makeSession({ id: 13, status: "ended", end_reason: "time_ceiling", candidate_name: "Timed out" }),
     ]);
 
-    expect(screen.getAllByText("Completed")).toHaveLength(2);
-    expect(screen.queryByText("Failed")).not.toBeInTheDocument();
+    expect(pills().getAllByText("Completed")).toHaveLength(2);
+    expect(pills().queryByText("Failed")).not.toBeInTheDocument();
   });
 
   it("reads an ended session carrying the error end reason as Failed, not Completed", async () => {
@@ -157,8 +173,8 @@ describe("AssessmentInvitePage session status pills", () => {
       makeSession({ id: 14, status: "ended", end_reason: "error", candidate_name: "Broken" }),
     ]);
 
-    expect(screen.getByText("Failed")).toBeInTheDocument();
-    expect(screen.queryByText("Completed")).not.toBeInTheDocument();
+    expect(pills().getByText("Failed")).toBeInTheDocument();
+    expect(pills().queryByText("Completed")).not.toBeInTheDocument();
   });
 
   it("presents all four labels as text, one per session, so colour is never the only signal", async () => {
@@ -169,10 +185,10 @@ describe("AssessmentInvitePage session status pills", () => {
       makeSession({ id: 23, status: "ended", end_reason: "error", candidate_name: "Agus" }),
     ]);
 
-    expect(screen.getByText("Awaiting candidate")).toBeInTheDocument();
-    expect(screen.getByText("Live")).toBeInTheDocument();
-    expect(screen.getByText("Completed")).toBeInTheDocument();
-    expect(screen.getByText("Failed")).toBeInTheDocument();
+    expect(pills().getByText("Awaiting candidate")).toBeInTheDocument();
+    expect(pills().getByText("Live")).toBeInTheDocument();
+    expect(pills().getByText("Completed")).toBeInTheDocument();
+    expect(pills().getByText("Failed")).toBeInTheDocument();
   });
 
   it("adds a pulsing indicator to Live only, and keeps it out of the accessible name", async () => {
@@ -185,12 +201,12 @@ describe("AssessmentInvitePage session status pills", () => {
 
     // `aria-hidden` is what assistive technology actually reads here, so it is
     // the contract worth asserting — the pill's text is its whole label.
-    const live = screen.getByText("Live");
+    const live = pills().getByText("Live");
     expect(live.textContent).toBe("Live");
     expect(live.querySelector('[aria-hidden="true"]')).not.toBeNull();
 
     for (const label of ["Awaiting candidate", "Completed", "Failed"]) {
-      expect(screen.getByText(label).querySelector('[aria-hidden="true"]')).toBeNull();
+      expect(pills().getByText(label).querySelector('[aria-hidden="true"]')).toBeNull();
     }
   });
 
@@ -560,27 +576,25 @@ describe("AssessmentInvitePage session table", () => {
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 
-  it("answers a list narrowed to nothing with its own message, not the invitation prompt", () => {
-    // Rendered on the component rather than through the page because nothing
-    // narrows the list yet — the filter and search layer is what hands the
-    // table fewer sessions than the Assessment has, and it reads this branch
-    // instead of the invitation prompt.
-    render(
-      <MemoryRouter>
-        <SessionTable
-          sessions={[]}
-          total={4}
-          assessmentId="1"
-          onCopy={vi.fn()}
-          copiedId={null}
-        />
-      </MemoryRouter>
+  it("answers a list narrowed to nothing with its own message, not the invitation prompt", async () => {
+    await renderPageWith([
+      makeSession({ id: 93, status: "pending", candidate_name: "Wati" }),
+      makeSession({ id: 94, status: "ended", end_reason: "all_covered", candidate_name: "Doni" }),
+    ]);
+
+    // Nothing narrows the list on its own: the filter and search layer hands
+    // the table fewer sessions than the Assessment has, and it reads this
+    // branch rather than the invitation prompt.
+    await userEvent.type(
+      screen.getByRole("textbox", { name: /search candidates/i }),
+      "zzz"
     );
 
     expect(screen.getByText("No candidates match")).toBeInTheDocument();
-    expect(screen.getByText(/this assessment has 4 candidates/i)).toBeInTheDocument();
+    expect(screen.getByText(/this assessment has 2 candidates/i)).toBeInTheDocument();
     expect(screen.queryByText("No candidates yet")).not.toBeInTheDocument();
     expect(screen.queryByText(/generate an interview link/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 
   it("puts a newly created invite in the table as a row, not in a card of its own", async () => {
@@ -672,3 +686,258 @@ describe("AssessmentInvitePage session table", () => {
     expect(serious).toEqual([]);
   });
 });
+
+// #50: the summary layer above the table — four count cards and five filter
+// tabs over one selection, a name search that composes with it, and a fresh
+// invite marked as a row rather than a surface of its own.
+//
+// The cards and the tabs deliberately share their words, so both are read
+// through their own group rather than off the page: a card's "Live 1" and the
+// tab's "Live 1" are the same fact said twice, and which one a test means is
+// the question the group answers.
+describe("AssessmentInvitePage cohort summary", () => {
+  // One session per presented status, so every count in the layer is non-zero
+  // and a count that moves can only have moved for one of these reasons.
+  const COHORT = () => [
+    makeSession({ id: 100, status: "pending", candidate_name: "Wati" }),
+    makeSession({ id: 101, status: "pending", candidate_name: "Sari" }),
+    makeSession({ id: 102, status: "active", candidate_name: "Rina" }),
+    makeSession({ id: 103, status: "ended", end_reason: "all_covered", candidate_name: "Doni" }),
+    makeSession({ id: 104, status: "ended", end_reason: "error", candidate_name: "Agus" }),
+  ];
+
+  function cardsGroup() {
+    return screen.getByRole("group", { name: "Candidate summary" });
+  }
+  function cards() {
+    return within(cardsGroup());
+  }
+  function tabs() {
+    return within(screen.getByRole("group", { name: "Filter by status" }));
+  }
+  function card(name: string) {
+    return cards().getByRole("button", { name });
+  }
+  function tab(name: string) {
+    return tabs().getByRole("button", { name });
+  }
+  function table() {
+    return screen.getByRole("table", { name: "Candidate sessions" });
+  }
+  function bodyRows() {
+    return within(table()).getAllByRole("row").slice(1);
+  }
+  function searchBox() {
+    return screen.getByRole("textbox", { name: /search candidates/i });
+  }
+
+  it("counts the cohort four ways above the table", async () => {
+    await renderWithSessions(COHORT());
+
+    expect(cards().getAllByRole("button").map((button) => button.textContent)).toEqual([
+      "Total candidates 5",
+      "Awaiting candidate 2",
+      "Live 1",
+      "Completed 1",
+    ]);
+  });
+
+  it("counts a zero rather than dropping the card that would have shown it", async () => {
+    // A cohort with nothing live and nothing completed.
+    await renderWithSessions([makeSession({ id: 105, status: "pending", candidate_name: "Wati" })]);
+
+    expect(cards().getAllByRole("button")).toHaveLength(4);
+    expect(card("Live 0")).toBeInTheDocument();
+    expect(card("Completed 0")).toBeInTheDocument();
+  });
+
+  it("narrows the table from a tab, whose count is the rows behind it, and restores it from All", async () => {
+    await renderWithSessions(COHORT());
+    expect(bodyRows()).toHaveLength(5);
+
+    await userEvent.click(tab("Live 1"));
+
+    expect(bodyRows()).toHaveLength(1);
+    expect(within(table()).getByRole("cell", { name: "Rina" })).toBeInTheDocument();
+    expect(screen.getByText("Showing 1 of 5 candidates")).toBeInTheDocument();
+    expect(tab("Live 1")).toHaveAttribute("aria-pressed", "true");
+    expect(tab("All 5")).toHaveAttribute("aria-pressed", "false");
+
+    await userEvent.click(tab("All 5"));
+
+    expect(bodyRows()).toHaveLength(5);
+    expect(screen.getByText("Showing 5 of 5 candidates")).toBeInTheDocument();
+  });
+
+  it("reads a card and its tab as one selection, so neither can describe a different table", async () => {
+    await renderWithSessions(COHORT());
+
+    // The card is the shortcut to the same narrowing the tab does.
+    await userEvent.click(card("Live 1"));
+
+    expect(bodyRows()).toHaveLength(1);
+    expect(card("Live 1")).toHaveAttribute("aria-pressed", "true");
+    expect(card("Total candidates 5")).toHaveAttribute("aria-pressed", "false");
+    expect(tab("Live 1")).toHaveAttribute("aria-pressed", "true");
+    expect(tab("All 5")).toHaveAttribute("aria-pressed", "false");
+
+    // And the tab moves the card, rather than the two keeping their own ideas.
+    await userEvent.click(tab("Awaiting 2"));
+
+    expect(card("Awaiting candidate 2")).toHaveAttribute("aria-pressed", "true");
+    expect(card("Live 1")).toHaveAttribute("aria-pressed", "false");
+    expect(tab("Awaiting 2")).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("reaches failed sessions from its tab, which is the only place failed is counted", async () => {
+    await renderWithSessions(COHORT());
+
+    // Broken sessions are reachable even though they get no card of their own.
+    expect(cards().queryByText(/failed/i)).not.toBeInTheDocument();
+    expect(tabs().getByRole("button", { name: "Failed 1" })).toBeInTheDocument();
+
+    await userEvent.click(tab("Failed 1"));
+
+    expect(bodyRows()).toHaveLength(1);
+    expect(within(table()).getByRole("cell", { name: "Agus" })).toBeInTheDocument();
+  });
+
+  it("narrows by candidate name as the assessor types", async () => {
+    await renderWithSessions(COHORT());
+    expect(bodyRows()).toHaveLength(5);
+
+    await userEvent.type(searchBox(), "in");
+
+    expect(bodyRows()).toHaveLength(1);
+    expect(within(table()).getByRole("cell", { name: "Rina" })).toBeInTheDocument();
+
+    // A partial name is a partial name — no submit, no exact match required.
+    await userEvent.type(searchBox(), "a");
+
+    expect(bodyRows()).toHaveLength(1);
+    expect(screen.getByText("Showing 1 of 5 candidates")).toBeInTheDocument();
+  });
+
+  it("narrows by name and by status together, so neither replaces the other", async () => {
+    await renderWithSessions(COHORT());
+
+    await userEvent.click(tab("Live 1"));
+    await userEvent.type(searchBox(), "doni");
+
+    // Doni is completed, so a search that replaced the filter would show them.
+    expect(screen.getByText("No candidates match")).toBeInTheDocument();
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+
+    await userEvent.clear(searchBox());
+    await userEvent.type(searchBox(), "rina");
+    expect(bodyRows()).toHaveLength(1);
+
+    // And the same the other way round: changing the status does not discard
+    // the name the assessor has typed.
+    await userEvent.click(tab("Completed 1"));
+    expect(screen.getByText("No candidates match")).toBeInTheDocument();
+
+    await userEvent.clear(searchBox());
+    await userEvent.click(tab("All 5"));
+    expect(bodyRows()).toHaveLength(5);
+  });
+
+  it("focuses the search box on `/`, but types a slash while the assessor is already typing", async () => {
+    await renderWithSessions(COHORT());
+    expect(searchBox()).not.toHaveFocus();
+
+    await userEvent.keyboard("/");
+    expect(searchBox()).toHaveFocus();
+
+    // Already in a field, so the shortcut must not eat the input it is
+    // supposed to make faster.
+    await userEvent.type(searchBox(), "/");
+    expect(searchBox()).toHaveValue("/");
+  });
+
+  it("marks a newly created invite as the first row, and stops once polling reports it started", async () => {
+    const CREATED: Session = {
+      id: 106,
+      assessment_id: 1,
+      candidate_name: "Rina",
+      invite_token: "tok-106",
+      invite_url: "https://example.com/interview/tok-106",
+      status: "pending",
+    };
+    // What the endpoint reports: nothing before the invite, then the new
+    // session awaiting, then — at the next poll — the same session live.
+    let polled: Session[] = [];
+
+    server.use(
+      http.get(`${API_BASE}/assessments/1`, () =>
+        HttpResponse.json({
+          data: {
+            assessment: { id: 1, name: "Backend Engineer", time_limit_min: 45, skills: [] },
+          },
+        })
+      ),
+      http.get(`${API_BASE}/assessments/1/sessions`, () =>
+        HttpResponse.json({ data: { sessions: polled } })
+      ),
+      http.post(`${API_BASE}/assessments/1/sessions`, () =>
+        HttpResponse.json({ data: { session: CREATED } })
+      )
+    );
+
+    renderPage();
+    await screen.findByRole("heading", { level: 1, name: "Backend Engineer" });
+
+    await userEvent.click(screen.getByRole("button", { name: /invite candidate/i }));
+    await userEvent.type(screen.getByLabelText(/candidate name/i), "Rina");
+    await userEvent.click(screen.getByRole("button", { name: /create link/i }));
+
+    // The row is the first one and carries the ordinary copy-link action, so
+    // sharing the new link costs no more than sharing any other pending invite.
+    const freshRow = (await screen.findByRole("cell", { name: "Rina" })).closest("tr");
+    expect(freshRow).not.toBeNull();
+    expect(within(freshRow as HTMLElement).getAllByRole("cell")[0].textContent).toBe("1");
+    expect(
+      within(freshRow as HTMLElement).getByRole("button", { name: /copy link/i })
+    ).toBeInTheDocument();
+    expect(isHighlighted(freshRow as HTMLElement)).toBe(true);
+
+    polled = [{ ...CREATED, status: "active", started_at: "2026-06-15T12:00:00Z" }];
+    await act(async () => {
+      pollOnce?.();
+    });
+
+    // Polling reported the candidate had joined, so the row stops claiming to
+    // be new. Nothing was scheduled to expire it.
+    const joinedRow = (await screen.findByRole("cell", { name: "Rina" })).closest("tr");
+    expect(isHighlighted(joinedRow as HTMLElement)).toBe(false);
+    expect(within(joinedRow as HTMLElement).getByText("Live")).toBeInTheDocument();
+    expect(within(joinedRow as HTMLElement).getByRole("button", { name: /monitor/i })).toBeInTheDocument();
+  });
+
+  it("has no serious accessibility violations over the summary layer", async () => {
+    await renderWithSessions(COHORT());
+
+    // The cards' group sits in the layer alongside the tabs and the search box,
+    // so the layer is what a scan should cover.
+    const layer = cardsGroup().parentElement;
+    expect(layer).toBeTruthy();
+
+    const results = await axe(layer as HTMLElement);
+    const serious = results.violations.filter(
+      (v) => v.impact === "serious" || v.impact === "critical"
+    );
+    expect(serious).toEqual([]);
+  });
+});
+
+// jsdom performs no layout, so a row's tint and its left accent — the whole of
+// what marks a fresh invite — cannot be seen by use. They are asserted on the
+// elements that carry them, as #49 does for the sticky header. What the test
+// pins is that the row is marked after the invite and unmarked after the poll,
+// which is the behaviour; the classes are where it is visible.
+function isHighlighted(row: HTMLElement): boolean {
+  return (
+    row.className.includes("bg-primary") &&
+    row.querySelector("td")?.className.includes("border-primary") === true
+  );
+}

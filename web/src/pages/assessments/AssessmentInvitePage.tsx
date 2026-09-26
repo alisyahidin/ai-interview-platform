@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -15,7 +15,14 @@ import { assessmentsApi } from "@/services/assessments";
 import { usePolling } from "@/hooks/usePolling";
 import PollingStalledBanner from "@/components/resource/PollingStalledBanner";
 import SessionTable from "@/components/sessions/SessionTable";
+import SessionSummary from "@/components/sessions/SessionSummary";
 import { LEVEL_LABELS } from "@/utils/constants";
+import { sessionPresentation } from "@/utils/sessionStatus";
+import {
+  countByPresentation,
+  filterSessions,
+  type SessionFilter,
+} from "@/utils/sessionFilter";
 import { ArrowLeft, Pencil, Plus } from "lucide-react";
 import type { Assessment, Session } from "@/types";
 
@@ -29,6 +36,11 @@ export default function AssessmentInvitePage() {
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [showInviteDialog, setShowInviteDialog] = useState(false);
   const [candidateNameInput, setCandidateNameInput] = useState("");
+  // The one selection the summary layer's cards and tabs both write, so the
+  // two cannot end up describing different tables.
+  const [statusFilter, setStatusFilter] = useState<SessionFilter>("all");
+  const [query, setQuery] = useState("");
+  const [freshSessionId, setFreshSessionId] = useState<number | null>(null);
 
   const loadSessions = useCallback(async () => {
     const res = await assessmentsApi.getSessions(Number(id));
@@ -63,13 +75,37 @@ export default function AssessmentInvitePage() {
     setShowInviteDialog(false);
     try {
       const res = await assessmentsApi.createSession(Number(id), candidateNameInput.trim() || undefined);
-      // The new invite is a row in the list, not a card above it: the list
-      // already shows this session, so a second surface restated it.
+      // The new invite is a row in the list, marked as fresh: the list already
+      // shows this session, so a second surface restated it. Only its id is
+      // kept — the row itself is `sessions`, which polling owns from here.
       setSessions((prev) => [res.data.session, ...prev]);
+      setFreshSessionId(res.data.session.id);
     } finally {
       setCreatingSession(false);
     }
   };
+
+  // Counts are taken from the whole cohort and the rows from the narrowed
+  // list, so the summary keeps describing the Assessment rather than the
+  // current view of it.
+  const counts = useMemo(() => countByPresentation(sessions), [sessions]);
+  const visibleSessions = useMemo(
+    () => filterSessions(sessions, statusFilter, query),
+    [sessions, statusFilter, query]
+  );
+
+  // The fresh-invite highlight reads the polled list rather than a clock: it
+  // holds while the session it marks is still awaiting its candidate, and the
+  // moment polling reports otherwise it is gone. Nothing has to expire it, so
+  // it cannot outlive the moment it was meant to describe.
+  const freshSession =
+    freshSessionId === null
+      ? null
+      : (sessions.find((session) => session.id === freshSessionId) ?? null);
+  const highlightedId =
+    freshSession && sessionPresentation(freshSession) === "awaiting_candidate"
+      ? freshSession.id
+      : null;
 
   const copyLink = (session: Session) => {
     navigator.clipboard.writeText(session.invite_url);
@@ -82,6 +118,7 @@ export default function AssessmentInvitePage() {
       <div className="space-y-4">
         <Skeleton className="h-8 w-64" />
         <Skeleton className="h-32 w-full" />
+        <Skeleton className="h-20 w-full" />
         <Skeleton className="h-48 w-full" />
       </div>
     );
@@ -161,16 +198,28 @@ export default function AssessmentInvitePage() {
       {/* Polling stalled — repeated failures refreshing candidate status */}
       {pollingStalled && <PollingStalledBanner onRetry={retryPolling} />}
 
+      {/* Summary layer — what the cohort looks like, and the two ways of
+          narrowing it. Cards and tabs write the same selection, so they read
+          the same table. */}
+      <SessionSummary
+        counts={counts}
+        filter={statusFilter}
+        onFilterChange={setStatusFilter}
+        query={query}
+        onQueryChange={setQuery}
+      />
+
       {/* Sessions list */}
       <div className="space-y-2">
         <h2 className="text-sm font-semibold">Candidates</h2>
 
         <SessionTable
-          sessions={sessions}
+          sessions={visibleSessions}
           total={sessions.length}
           assessmentId={id!}
           onCopy={copyLink}
           copiedId={copiedId}
+          highlightedId={highlightedId}
         />
       </div>
     </div>

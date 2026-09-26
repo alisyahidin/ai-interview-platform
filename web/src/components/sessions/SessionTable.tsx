@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/table";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { TruncatedText } from "@/components/ui/truncated-text";
+import { cn } from "@/lib/utils";
 import { sessionPresentation } from "@/utils/sessionStatus";
 import SessionStatusPill from "./SessionStatusPill";
 import type { Session } from "@/types";
@@ -49,20 +50,31 @@ function SessionRow({
   assessmentId,
   onCopy,
   copiedId,
+  highlighted,
 }: {
   session: Session;
   position: number;
   assessmentId: string;
   onCopy: (session: Session) => void;
   copiedId: number | null;
+  /** The row of the invite the assessor has just created. */
+  highlighted: boolean;
 }) {
   const navigate = useNavigate();
   const presentation = sessionPresentation(session);
   const started = session.started_at ? new Date(session.started_at) : null;
 
   return (
-    <TableRow>
-      <TableCell className="w-12 px-4 py-2.5 text-muted-foreground tabular-nums">
+    // A fresh invite is marked by a tint and a left accent on its first cell,
+    // which is transparent on every other row so that marking one never shifts
+    // the column it sits in.
+    <TableRow className={highlighted ? "bg-primary/5 hover:bg-primary/10" : undefined}>
+      <TableCell
+        className={cn(
+          "w-12 border-l-2 px-4 py-2.5 text-muted-foreground tabular-nums",
+          highlighted ? "border-primary" : "border-transparent"
+        )}
+      >
         {position}
       </TableCell>
       <TableCell className="max-w-[240px] px-4 py-2.5">
@@ -146,8 +158,7 @@ function SessionRow({
 }
 
 interface SessionTableProps {
-  /** The sessions to show. #49 shows all of them; narrowing arrives with the
-   *  filter and search layer, which passes a subset here. */
+  /** The sessions to show, already narrowed by the filter and search layer. */
   sessions: Session[];
   /** How many sessions the Assessment has, before any narrowing — what the
    *  count beneath the table compares against, and what makes "none match" a
@@ -156,6 +167,10 @@ interface SessionTableProps {
   assessmentId: string;
   onCopy: (session: Session) => void;
   copiedId: number | null;
+  /** The session whose invite was just created, while the list still reports
+   *  it as awaiting its candidate — `null` for every other row, and for this
+   *  one too once it stops being new. */
+  highlightedId: number | null;
 }
 
 export default function SessionTable({
@@ -164,6 +179,7 @@ export default function SessionTable({
   assessmentId,
   onCopy,
   copiedId,
+  highlightedId,
 }: SessionTableProps) {
   if (sessions.length === 0) {
     return total > 0 ? <NoMatches total={total} /> : <NoCandidates />;
@@ -210,6 +226,7 @@ export default function SessionTable({
                   assessmentId={assessmentId}
                   onCopy={onCopy}
                   copiedId={copiedId}
+                  highlighted={session.id === highlightedId}
                 />
               ))}
             </TableBody>
