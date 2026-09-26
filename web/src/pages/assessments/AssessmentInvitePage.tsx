@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { assessmentsApi } from "@/services/assessments";
 import { usePolling } from "@/hooks/usePolling";
 import PollingStalledBanner from "@/components/resource/PollingStalledBanner";
+import SessionStatusPill from "@/components/sessions/SessionStatusPill";
 import { LEVEL_LABELS } from "@/utils/constants";
 import { ArrowLeft, Copy, Check, Eye, Pencil, Clock, Plus, UserRound } from "lucide-react";
 import type { Assessment, Session } from "@/types";
@@ -56,30 +57,7 @@ function SessionRow({
       </div>
 
       <div className="flex items-center gap-3">
-        {isPending && (
-          <span className="flex items-center gap-1 text-xs text-amber-600">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-            Awaiting candidate
-          </span>
-        )}
-        {isLive && (
-          <span className="flex items-center gap-1 text-xs text-primary">
-            <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-            Live
-          </span>
-        )}
-        {isEnded && session.end_reason === "error" && (
-          <span className="flex items-center gap-1 text-xs text-destructive">
-            <span className="w-1.5 h-1.5 rounded-full bg-destructive" />
-            Failed
-          </span>
-        )}
-        {isEnded && session.end_reason !== "error" && (
-          <span className="flex items-center gap-1 text-xs text-green-600">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-            Completed
-          </span>
-        )}
+        <SessionStatusPill session={session} />
 
         <div className="flex items-center gap-1.5">
           {isPending && (
