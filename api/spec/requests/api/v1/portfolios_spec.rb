@@ -148,7 +148,7 @@ RSpec.describe "Api::V1::Portfolios", type: :request do
     context "when requested with a vacancy_id param (embeds the fit/gap report)" do
       before do
         get "/api/v1/portfolios/#{world.portfolio_a.public_id}/export",
-            params: { vacancy_id: world.vacancy_a.id }, headers: headers_a
+            params: { vacancy_id: world.vacancy_a.public_id }, headers: headers_a
       end
 
       it "returns 200" do
@@ -173,7 +173,7 @@ RSpec.describe "Api::V1::Portfolios", type: :request do
     context "when requested by the owning tenant" do
       before do
         post "/api/v1/portfolios/#{world.portfolio_a.public_id}/fitgap",
-             params: { vacancy_id: world.vacancy_a.id }, headers: headers_a
+             params: { vacancy_id: world.vacancy_a.public_id }, headers: headers_a
       end
 
       it "returns 200 (AC49)" do
@@ -201,7 +201,7 @@ RSpec.describe "Api::V1::Portfolios", type: :request do
     context "when requested by another tenant" do
       before do
         post "/api/v1/portfolios/#{world.portfolio_a.public_id}/fitgap",
-             params: { vacancy_id: world.vacancy_a.id }, headers: headers_b
+             params: { vacancy_id: world.vacancy_a.public_id }, headers: headers_b
       end
 
       it "returns 404 (AC48)" do
@@ -222,7 +222,7 @@ RSpec.describe "Api::V1::Portfolios", type: :request do
     context "when requested by the owning tenant" do
       before do
         post "/api/v1/portfolios/#{world.portfolio_a.public_id}/regenerate_fitgap",
-             params: { vacancy_id: world.vacancy_a.id }, headers: headers_a
+             params: { vacancy_id: world.vacancy_a.public_id }, headers: headers_a
       end
 
       it "returns 202 (AC49)" do
@@ -243,7 +243,7 @@ RSpec.describe "Api::V1::Portfolios", type: :request do
     context "when requested by another tenant" do
       before do
         post "/api/v1/portfolios/#{world.portfolio_a.public_id}/regenerate_fitgap",
-             params: { vacancy_id: world.vacancy_a.id }, headers: headers_b
+             params: { vacancy_id: world.vacancy_a.public_id }, headers: headers_b
       end
 
       it "returns 404 (AC48)" do
@@ -260,9 +260,9 @@ RSpec.describe "Api::V1::Portfolios", type: :request do
     end
   end
 
-  describe "GET /api/v1/portfolios/:id/fitgap/:vacancy_id (show_fitgap)" do
+  describe "GET /api/v1/portfolios/:id/fitgap/:vacancy_public_id (show_fitgap)" do
     context "when requested by the owning tenant" do
-      before { get "/api/v1/portfolios/#{world.portfolio_a.public_id}/fitgap/#{world.vacancy_a.id}", headers: headers_a }
+      before { get "/api/v1/portfolios/#{world.portfolio_a.public_id}/fitgap/#{world.vacancy_a.public_id}", headers: headers_a }
 
       it "returns 200 (AC49)" do
         expect(response).to have_http_status(:ok)
@@ -282,7 +282,7 @@ RSpec.describe "Api::V1::Portfolios", type: :request do
     end
 
     context "when requested by another tenant" do
-      before { get "/api/v1/portfolios/#{world.portfolio_a.public_id}/fitgap/#{world.vacancy_a.id}", headers: headers_b }
+      before { get "/api/v1/portfolios/#{world.portfolio_a.public_id}/fitgap/#{world.vacancy_a.public_id}", headers: headers_b }
 
       it "returns 404 (AC48)" do
         expect(response).to have_http_status(:not_found)
@@ -312,18 +312,191 @@ RSpec.describe "Api::V1::Portfolios", type: :request do
 
     it "404s POST /api/v1/portfolios/:id/fitgap" do
       post "/api/v1/portfolios/#{world.portfolio_a.id}/fitgap",
-           params: { vacancy_id: world.vacancy_a.id }, headers: headers_a
+           params: { vacancy_id: world.vacancy_a.public_id }, headers: headers_a
       expect(response).to have_http_status(:not_found)
     end
 
     it "404s POST /api/v1/portfolios/:id/regenerate_fitgap" do
       post "/api/v1/portfolios/#{world.portfolio_a.id}/regenerate_fitgap",
+           params: { vacancy_id: world.vacancy_a.public_id }, headers: headers_a
+      expect(response).to have_http_status(:not_found)
+    end
+
+    it "404s GET /api/v1/portfolios/:id/fitgap/:vacancy_public_id" do
+      get "/api/v1/portfolios/#{world.portfolio_a.id}/fitgap/#{world.vacancy_a.public_id}", headers: headers_a
+      expect(response).to have_http_status(:not_found)
+    end
+  end
+
+  # This ticket's fix: #40 stopped exposing Vacancy's raw sequential id
+  # anywhere, but #41 left these four actions' *vacancy* lookups still
+  # keyed on it (treating that as "#40's territory") -- so every one of
+  # them silently broke once nothing in the app could obtain a real
+  # sequential vacancy id any more. These specs (through the matching
+  # "GET /api/v1/portfolios/:id/export" group further below) are the direct
+  # regression guard: a real vacancy public_id must resolve and succeed,
+  # while the vacancy's old sequential id (still a valid, populated column
+  # -- just no longer reachable from anywhere) or outright garbage must
+  # 404, never a silent empty/wrong result and never a 500 (a bare `uuid`
+  # column would otherwise raise `PG::InvalidTextRepresentation` for a
+  # non-UUID string; see `HasPublicId#find_by_public_id!`).
+  describe "POST /api/v1/portfolios/:id/fitgap -- vacancy resolution" do
+    context "when given the vacancy's public_id" do
+      before do
+        post "/api/v1/portfolios/#{world.portfolio_a.public_id}/fitgap",
+             params: { vacancy_id: world.vacancy_a.public_id }, headers: headers_a
+      end
+
+      it "returns 200" do
+        expect(response).to have_http_status(:ok)
+      end
+
+      it "returns the cached fit/gap report for that vacancy" do
+        expect(response.parsed_body["report"]).to eq(expected_fit_gap_json(world.fit_gap_report_a))
+      end
+    end
+
+    it "404s when given the vacancy's old sequential id" do
+      post "/api/v1/portfolios/#{world.portfolio_a.public_id}/fitgap",
            params: { vacancy_id: world.vacancy_a.id }, headers: headers_a
       expect(response).to have_http_status(:not_found)
     end
 
-    it "404s GET /api/v1/portfolios/:id/fitgap/:vacancy_id" do
-      get "/api/v1/portfolios/#{world.portfolio_a.id}/fitgap/#{world.vacancy_a.id}", headers: headers_a
+    it "404s when given a garbage vacancy_id" do
+      post "/api/v1/portfolios/#{world.portfolio_a.public_id}/fitgap",
+           params: { vacancy_id: "not-a-real-id" }, headers: headers_a
+      expect(response).to have_http_status(:not_found)
+    end
+  end
+
+  describe "POST /api/v1/portfolios/:id/regenerate_fitgap -- vacancy resolution" do
+    context "when given the vacancy's public_id" do
+      before do
+        post "/api/v1/portfolios/#{world.portfolio_a.public_id}/regenerate_fitgap",
+             params: { vacancy_id: world.vacancy_a.public_id }, headers: headers_a
+      end
+
+      it "returns 202" do
+        expect(response).to have_http_status(:accepted)
+      end
+
+      it "queues a regeneration job" do
+        expect(FitGapGeneratorWorker.jobs.size).to eq(1)
+      end
+    end
+
+    context "when given the vacancy's old sequential id" do
+      before do
+        post "/api/v1/portfolios/#{world.portfolio_a.public_id}/regenerate_fitgap",
+             params: { vacancy_id: world.vacancy_a.id }, headers: headers_a
+      end
+
+      it "returns 404" do
+        expect(response).to have_http_status(:not_found)
+      end
+
+      it "enqueues no job" do
+        expect(FitGapGeneratorWorker.jobs).to be_empty
+      end
+    end
+
+    context "when given a garbage vacancy_id" do
+      before do
+        post "/api/v1/portfolios/#{world.portfolio_a.public_id}/regenerate_fitgap",
+             params: { vacancy_id: "not-a-real-id" }, headers: headers_a
+      end
+
+      it "returns 404" do
+        expect(response).to have_http_status(:not_found)
+      end
+
+      it "enqueues no job" do
+        expect(FitGapGeneratorWorker.jobs).to be_empty
+      end
+    end
+  end
+
+  describe "GET /api/v1/portfolios/:id/fitgap/:vacancy_public_id (show_fitgap) -- vacancy resolution" do
+    context "when given the vacancy's public_id" do
+      before do
+        get "/api/v1/portfolios/#{world.portfolio_a.public_id}/fitgap/#{world.vacancy_a.public_id}",
+            headers: headers_a
+      end
+
+      it "returns 200" do
+        expect(response).to have_http_status(:ok)
+      end
+
+      it "returns the fit/gap report for that vacancy" do
+        expect(response.parsed_body["report"]).to eq(expected_fit_gap_json(world.fit_gap_report_a))
+      end
+    end
+
+    it "404s when given the vacancy's old sequential id" do
+      get "/api/v1/portfolios/#{world.portfolio_a.public_id}/fitgap/#{world.vacancy_a.id}",
+          headers: headers_a
+      expect(response).to have_http_status(:not_found)
+    end
+
+    it "404s when given a garbage vacancy_id" do
+      get "/api/v1/portfolios/#{world.portfolio_a.public_id}/fitgap/not-a-real-id",
+          headers: headers_a
+      expect(response).to have_http_status(:not_found)
+    end
+  end
+
+  describe "GET /api/v1/portfolios/:id/export -- vacancy resolution" do
+    context "with a JSON export, given the vacancy's public_id" do
+      before do
+        get "/api/v1/portfolios/#{world.portfolio_a.public_id}/export",
+            params: { vacancy_id: world.vacancy_a.public_id }, headers: headers_a
+      end
+
+      it "returns 200" do
+        expect(response).to have_http_status(:ok)
+      end
+
+      it "embeds the fit/gap report for that vacancy" do
+        expect(response.parsed_body["fit_gap_report"]).to eq(expected_fit_gap_json(world.fit_gap_report_a))
+      end
+    end
+
+    it "404s the JSON export when given the vacancy's old sequential id" do
+      get "/api/v1/portfolios/#{world.portfolio_a.public_id}/export",
+          params: { vacancy_id: world.vacancy_a.id }, headers: headers_a
+      expect(response).to have_http_status(:not_found)
+    end
+
+    it "404s the JSON export when given a garbage vacancy_id" do
+      get "/api/v1/portfolios/#{world.portfolio_a.public_id}/export",
+          params: { vacancy_id: "not-a-real-id" }, headers: headers_a
+      expect(response).to have_http_status(:not_found)
+    end
+
+    context "with a PDF export, given the vacancy's public_id" do
+      before do
+        get "/api/v1/portfolios/#{world.portfolio_a.public_id}/export",
+            params: { format: "pdf", vacancy_id: world.vacancy_a.public_id }, headers: headers_a
+      end
+
+      it "returns 200" do
+        expect(response).to have_http_status(:ok)
+      end
+
+      it "returns a PDF" do
+        expect(response.media_type).to eq("application/pdf")
+      end
+    end
+
+    it "404s the PDF export when given the vacancy's old sequential id" do
+      get "/api/v1/portfolios/#{world.portfolio_a.public_id}/export",
+          params: { format: "pdf", vacancy_id: world.vacancy_a.id }, headers: headers_a
+      expect(response).to have_http_status(:not_found)
+    end
+
+    it "404s the PDF export when given a garbage vacancy_id" do
+      get "/api/v1/portfolios/#{world.portfolio_a.public_id}/export",
+          params: { format: "pdf", vacancy_id: "not-a-real-id" }, headers: headers_a
       expect(response).to have_http_status(:not_found)
     end
   end
@@ -426,7 +599,7 @@ RSpec.describe "Api::V1::Portfolios", type: :request do
     end
   end
 
-  describe "GET /api/v1/portfolios/:id/fitgap/:vacancy_id -- fit/gap row override/assessment fields (#22)" do
+  describe "GET /api/v1/portfolios/:id/fitgap/:vacancy_public_id -- fit/gap row override/assessment fields (#22)" do
     before do
       tenant  = create_tenant
       headers = auth_headers_for(tenant)
@@ -453,7 +626,7 @@ RSpec.describe "Api::V1::Portfolios", type: :request do
 
       FitGap::Engine.new(portfolio: portfolio, vacancy: vacancy, gemini_client: gemini_client).call
 
-      get "/api/v1/portfolios/#{portfolio.public_id}/fitgap/#{vacancy.id}", headers: headers
+      get "/api/v1/portfolios/#{portfolio.public_id}/fitgap/#{vacancy.public_id}", headers: headers
     end
 
     def row_for(label)

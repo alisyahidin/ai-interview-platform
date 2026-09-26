@@ -163,7 +163,7 @@ function PortfolioPageContent({
       const res = await portfoliosApi.exportPortfolio(
         portfolio.public_id,
         format,
-        selectedVacancy ? Number(selectedVacancy) : undefined
+        selectedVacancy || undefined
       );
       if (format === "json") {
         const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: "application/json" });

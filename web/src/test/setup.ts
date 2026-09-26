@@ -14,6 +14,35 @@ if (typeof globalThis.ResizeObserver === "undefined") {
   };
 }
 
+// jsdom doesn't implement pointer capture or scrollIntoView, which Radix
+// UI's <Select> (used e.g. by PortfolioPage's vacancy picker) relies on
+// internally to drive its open/close and item-scroll behavior via real
+// pointer events. Without these, clicking a <Select> in a test crashes with
+// "target.hasPointerCapture is not a function".
+if (typeof Element.prototype.hasPointerCapture !== "function") {
+  Element.prototype.hasPointerCapture = () => false;
+}
+if (typeof Element.prototype.setPointerCapture !== "function") {
+  Element.prototype.setPointerCapture = () => {};
+}
+if (typeof Element.prototype.releasePointerCapture !== "function") {
+  Element.prototype.releasePointerCapture = () => {};
+}
+if (typeof Element.prototype.scrollIntoView !== "function") {
+  Element.prototype.scrollIntoView = () => {};
+}
+
+// jsdom doesn't implement the Blob URL registry, which pages use to trigger
+// a client-side file download (e.g. PortfolioPage/FitGapReportPage's PDF/
+// JSON export buttons). Without this, any test that exercises an export
+// button throws an unhandled "URL.createObjectURL is not a function".
+if (typeof URL.createObjectURL !== "function") {
+  URL.createObjectURL = () => "blob:mock-url";
+}
+if (typeof URL.revokeObjectURL !== "function") {
+  URL.revokeObjectURL = () => {};
+}
+
 // jsdom doesn't implement canvas, which axe-core's colour-contrast rule
 // probes (via getContext) while checking for icon-font ligatures. Without
 // this, every axe() scan over an element containing an icon logs a noisy
