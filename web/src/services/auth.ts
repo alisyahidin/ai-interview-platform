@@ -5,8 +5,20 @@ export interface LoginPayload {
   password: string;
 }
 
+// #43: matches the real Auth::Authentication contract -- both `admin` and
+// `user` roles succeed here now, and the response carries the user's
+// organization_id derived from their own record (not a JWT claim). The
+// frontend doesn't currently branch on `user`'s fields, but the type
+// reflects what the backend actually returns rather than only the field
+// LoginPage happens to read today.
 export interface LoginResponse {
   token: string;
+  user: {
+    id: number;
+    email: string;
+    role: string;
+    organization_id: number | null;
+  };
 }
 
 export interface RegisterPayload {
