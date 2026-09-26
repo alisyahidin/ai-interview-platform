@@ -98,7 +98,7 @@ export default function AssessmentNewPage() {
         })),
       };
       const res = await assessmentsApi.create(payload);
-      navigate(`/assessments/${res.data.assessment.id}/invite`);
+      navigate(`/assessments/${res.data.assessment.public_id}/invite`);
     } catch (e: any) {
       setError(e?.response?.data?.errors?.[0]?.message ?? "Failed to save assessment.");
     } finally {

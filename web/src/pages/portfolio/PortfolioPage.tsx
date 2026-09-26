@@ -353,7 +353,7 @@ function PortfolioPageContent({
               </SelectTrigger>
               <SelectContent>
                 {vacancies.map((v) => (
-                  <SelectItem key={v.id} value={String(v.id)}>
+                  <SelectItem key={v.public_id} value={v.public_id}>
                     {v.role_title}
                   </SelectItem>
                 ))}

@@ -34,7 +34,7 @@ export default function VacancyEditPage() {
   });
   const { fields, append, remove } = useFieldArray({ control, name: "skills" });
 
-  const fetchVacancy = useCallback(() => vacanciesApi.get(Number(id)), [id]);
+  const fetchVacancy = useCallback(() => vacanciesApi.get(id!), [id]);
   const { resource } = useResource(fetchVacancy);
 
   useEffect(() => {
@@ -46,7 +46,7 @@ export default function VacancyEditPage() {
   const onSubmit = async (data: VacancyFormValues) => {
     setSubmitting(true);
     try {
-      await vacanciesApi.update(Number(id), {
+      await vacanciesApi.update(id!, {
         role_title: data.role_title,
         culture_dimensions: data.culture_dimensions,
         competency_expectations: data.competency_expectations,

@@ -14,8 +14,8 @@ export const assessmentsApi = {
       params: { page },
     }),
 
-  get: (id: number) =>
-    api.get<{ assessment: Assessment }>(`/assessments/${id}`),
+  get: (publicId: string) =>
+    api.get<{ assessment: Assessment }>(`/assessments/${publicId}`),
 
   create: (data: AssessmentPayload) =>
     api.post<{ assessment: Assessment; system_prompt_generated: boolean }>(
@@ -23,20 +23,20 @@ export const assessmentsApi = {
       { assessment: data }
     ),
 
-  update: (id: number, data: AssessmentPayload) =>
+  update: (publicId: string, data: AssessmentPayload) =>
     api.put<{ assessment: Assessment; system_prompt_generated: boolean }>(
-      `/assessments/${id}`,
+      `/assessments/${publicId}`,
       { assessment: data }
     ),
 
-  delete: (id: number) => api.delete(`/assessments/${id}`),
+  delete: (publicId: string) => api.delete(`/assessments/${publicId}`),
 
-  getSessions: (assessmentId: number) =>
-    api.get<{ sessions: Session[] }>(`/assessments/${assessmentId}/sessions`),
+  getSessions: (assessmentPublicId: string) =>
+    api.get<{ sessions: Session[] }>(`/assessments/${assessmentPublicId}/sessions`),
 
-  createSession: (assessmentId: number, candidateName?: string, candidateId?: number) =>
+  createSession: (assessmentPublicId: string, candidateName?: string, candidateId?: number) =>
     api.post<{ session: Session; invite_url: string }>(
-      `/assessments/${assessmentId}/sessions`,
+      `/assessments/${assessmentPublicId}/sessions`,
       { session: { candidate_name: candidateName, candidate_id: candidateId } }
     ),
 };

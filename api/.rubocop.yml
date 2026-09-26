@@ -78,6 +78,17 @@ Rails/SkipsModelValidations:
   Exclude:
     - "app/services/sessions/end_handler.rb"
 
+# `find_by_public_id!` isn't an auto-generated ActiveRecord dynamic finder --
+# it's a deliberate, hand-written class method from the shared `HasPublicId`
+# concern (#37/#40/#41: `find_by!(public_id: ...)`), the one blessed way
+# every controller looks a session/portfolio/assessment/vacancy up by its
+# non-enumerable identifier. The cop can't tell that apart from a real
+# `find_by_<column>!` dynamic finder syntactically, so it's a false positive
+# at every call site that uses the concern as designed.
+Rails/DynamicFindBy:
+  AllowedMethods:
+    - find_by_public_id!
+
 # Not a class/model under test — it's a cross-cutting infra behavior (Q10).
 RSpec/DescribeClass:
   Exclude:

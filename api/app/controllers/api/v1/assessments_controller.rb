@@ -30,8 +30,17 @@ module Api
         assessment.created_by = current_user.id
 
         if assessment.save
+          # `public_id` is a DB-generated default (`gen_random_uuid()`) --
+          # this Rails/adapter combination doesn't read generated column
+          # defaults back via INSERT ... RETURNING, so the in-memory record
+          # needs an explicit reload or its response would carry a nil
+          # public_id right after creation (#40).
+          assessment.reload
           SystemPromptGeneratorWorker.perform_async(assessment.id)
-          json_response({ assessment:, system_prompt_generated: true }, :created)
+          json_response(
+            { assessment: assessment_with_skills_json(assessment), system_prompt_generated: true },
+            :created
+          )
         else
           json_error(assessment.errors.full_messages.first, :unprocessable_entity)
         end
@@ -56,7 +65,7 @@ module Api
       private
 
       def set_assessment
-        @assessment = Assessment.find(params[:id])
+        @assessment = Assessment.find_by_public_id!(params[:public_id])
       rescue ActiveRecord::RecordNotFound
         json_error("Assessment not found", :not_found)
       end
@@ -79,7 +88,7 @@ module Api
         latest = assessment.sessions.max_by(&:created_at)
 
         {
-          id:             assessment.id,
+          public_id:      assessment.public_id,
           name:           assessment.name,
           time_limit_min: assessment.time_limit_min,
           language:       assessment.language || 'en',

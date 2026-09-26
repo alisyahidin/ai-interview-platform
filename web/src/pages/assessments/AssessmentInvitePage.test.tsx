@@ -9,7 +9,11 @@ import AssessmentInvitePage from "./AssessmentInvitePage";
 // This file proves AssessmentInvitePage is wired to the shared `usePolling`
 // hook's stalled state (ticket #15) — it does not re-derive the hook's own
 // backoff matrix, which is covered exhaustively in `src/hooks/usePolling.test.ts`.
+//
+// Ticket #40: the assessment is addressed by `public_id` (a UUID) in the
+// route and every API call this page makes, not the sequential `id`.
 const API_BASE = "http://localhost:3001/api/v1";
+const PUBLIC_ID = "33333333-3333-4333-8333-333333333333";
 
 const retryMock = vi.fn();
 let pollingResult: { isStalled: boolean; retry: () => void; failureCount: number; intervalMs: number } = {
@@ -25,7 +29,7 @@ vi.mock("@/hooks/usePolling", () => ({
 
 function renderPage() {
   return render(
-    <MemoryRouter initialEntries={["/assessments/1/invite"]}>
+    <MemoryRouter initialEntries={[`/assessments/${PUBLIC_ID}/invite`]}>
       <Routes>
         <Route path="/assessments/:id/invite" element={<AssessmentInvitePage />} />
       </Routes>
@@ -39,11 +43,11 @@ describe("AssessmentInvitePage polling wiring", () => {
     pollingResult = { isStalled: false, retry: retryMock, failureCount: 0, intervalMs: 5000 };
 
     server.use(
-      http.get(`${API_BASE}/assessments/1`, () =>
+      http.get(`${API_BASE}/assessments/${PUBLIC_ID}`, () =>
         HttpResponse.json({
           data: {
             assessment: {
-              id: 1,
+              public_id: PUBLIC_ID,
               name: "Backend Engineer",
               time_limit_min: 45,
               skills: [],
@@ -51,7 +55,7 @@ describe("AssessmentInvitePage polling wiring", () => {
           },
         })
       ),
-      http.get(`${API_BASE}/assessments/1/sessions`, () =>
+      http.get(`${API_BASE}/assessments/${PUBLIC_ID}/sessions`, () =>
         HttpResponse.json({
           data: {
             sessions: [

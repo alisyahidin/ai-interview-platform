@@ -77,7 +77,7 @@ export default function FitGapReportPage() {
   useEffect(() => {
     if (!vacancyId) return;
     vacanciesApi
-      .get(Number(vacancyId))
+      .get(vacancyId)
       .then((res) => setVacancy(res.data.vacancy))
       .catch(() => {});
   }, [vacancyId]);

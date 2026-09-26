@@ -50,9 +50,9 @@ export default function VacancyListPage() {
         <div className="space-y-2">
           {vacancies.map((v) => (
             <Card
-              key={v.id}
+              key={v.public_id}
               className="cursor-pointer hover:border-primary/40 transition-colors"
-              onClick={() => navigate(`/vacancies/${v.id}/edit`)}
+              onClick={() => navigate(`/vacancies/${v.public_id}/edit`)}
             >
               <CardContent className="py-3 px-4 flex items-center justify-between">
                 <div className="flex items-center gap-2">
