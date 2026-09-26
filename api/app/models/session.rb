@@ -25,6 +25,13 @@ class Session < ApplicationRecord
   def ended?   = status == 'ended'
   def pending? = status == 'pending'
 
+  # The terminal "failed" state re-invite (#29) cares about: the session ended
+  # because of a platform/system error rather than a normal candidate/assessor
+  # close or a natural finish. NOTE: STATUSES includes a 'failed' value, but
+  # nothing in this codebase ever transitions status into it -- errors are
+  # recorded as status: 'ended', end_reason: 'error' (see Sessions::EndHandler).
+  def failed? = ended? && end_reason == 'error'
+
   def invite_url
     base = ENV.fetch('APP_BASE_URL', 'http://localhost:3001')
     "#{base}/interview/#{invite_token}"
