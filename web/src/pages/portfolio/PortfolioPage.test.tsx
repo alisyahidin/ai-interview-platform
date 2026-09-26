@@ -75,7 +75,7 @@ function mockSession(session: Record<string, unknown>) {
         data: {
           session: {
             public_id: SESSION_PUBLIC_ID,
-            assessment_id: 1,
+            assessment_public_id: "assessment-public-1",
             invite_token: "tok",
             invite_url: "https://x/tok",
             candidate_name: "Ali",

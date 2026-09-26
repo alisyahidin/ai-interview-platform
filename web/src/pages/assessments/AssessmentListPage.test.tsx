@@ -105,7 +105,7 @@ describe("AssessmentListPage re-invite action (#33)", () => {
           {
             session: {
               public_id: NEW_SESSION_PUBLIC_ID,
-              assessment_id: 1,
+              assessment_public_id: "assessment-public-1",
               tenant_id: 1,
               candidate_id: 42,
               candidate_name: "Budi Santoso",

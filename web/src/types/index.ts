@@ -39,9 +39,11 @@ export interface AssessmentSkill {
 
 export interface Session {
   // #41: sessions are addressed by public_id end-to-end; the backend no
-  // longer sends the sequential id in session_json.
+  // longer sends the sequential id in session_json. The parent assessment
+  // is one of the four public_id-covered resource types (#40), so its
+  // sequential FK is never sent either -- only assessment_public_id is.
   public_id: string;
-  assessment_id: number;
+  assessment_public_id: string;
   tenant_id?: number;
   candidate_id?: number;
   candidate_name?: string;
@@ -200,8 +202,10 @@ export interface SkillComparison {
 
 export interface FitGapReport {
   id: number;
-  portfolio_id: number;
-  vacancy_id: number;
+  // Portfolios and vacancies are both public_id-covered resource types
+  // (#40/#41) -- their raw sequential FKs are never sent, only public_id.
+  portfolio_public_id: string;
+  vacancy_public_id: string;
   skill_comparisons: SkillComparison[];
   culture_narrative: string;
   overall_narrative: string;

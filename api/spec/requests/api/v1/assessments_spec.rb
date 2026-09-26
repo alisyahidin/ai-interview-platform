@@ -209,9 +209,14 @@ RSpec.describe "Api::V1::Assessments", type: :request do
     end
 
     describe "GET /api/v1/sessions/:public_id (nested assessment sub-object)" do
+      # #41: sessions are now addressed by public_id, not the sequential id
+      # (a request built with session.id here would 404 and leave
+      # response.parsed_body["session"] nil). The session factory's
+      # after(:create, &:reload) hook (added alongside this fix) means
+      # `create(:session, ...)` already returns public_id populated, with
+      # no manual .reload needed here.
       let(:session) { create(:session, tenant_id: tenant.id, assessment: assessment) }
 
-      # #41: sessions are now addressed by public_id, not the sequential id.
       before { get "/api/v1/sessions/#{session.public_id}", headers: headers }
 
       it "keys the embedded assessment on public_id" do

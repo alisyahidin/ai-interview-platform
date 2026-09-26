@@ -226,6 +226,25 @@ RSpec.describe "Api::V1::Authentication", type: :request do
         expect(response).to have_http_status(:unauthorized)
       end
     end
+
+    # Auth::Authentication and Auth::Registration normalize email
+    # differently (see the style-consistency pass over both services in
+    # the same Auth:: namespace): Registration already strips + downcases,
+    # so a registered email is always stored stripped. Authentication must
+    # strip too, or a login attempt with a stray leading/trailing space --
+    # easy to introduce via copy/paste or autofill -- would fail to match
+    # a correctly-stored, stripped email.
+    context "with a leading/trailing whitespace in the submitted email" do
+      before do
+        create(:user, email: "whitespace@example.com", password: "password123",
+                      role: "user", organization_id: organization.id)
+        login(email: "  whitespace@example.com  ")
+      end
+
+      it "returns 200 (matches the stripped, registered email)" do
+        expect(response).to have_http_status(:ok)
+      end
+    end
   end
 
   describe "a JWT for a since-deleted user" do

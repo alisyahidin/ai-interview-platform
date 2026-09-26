@@ -63,7 +63,7 @@ describe("AssessmentInvitePage polling wiring", () => {
                 // #41: sessions are addressed by public_id, not a sequential
                 // id -- the backend no longer sends `id` here.
                 public_id: "session-public-10",
-                assessment_id: 1,
+                assessment_public_id: "assessment-public-1",
                 invite_token: "tok",
                 invite_url: "https://example.com/interview/tok",
                 status: "pending",

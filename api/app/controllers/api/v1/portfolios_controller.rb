@@ -79,7 +79,7 @@ module Api
 
       # POST /api/v1/portfolios/:public_id/regenerate_fitgap
       def regenerate_fitgap
-        portfolio  = Portfolio.find_by_public_id!(params[:public_id]) # rubocop:disable Rails/DynamicFindBy
+        portfolio  = Portfolio.find_by_public_id!(params[:public_id])
         vacancy_id = params[:vacancy_id]
 
         return json_error("vacancy_id is required", :unprocessable_entity) if vacancy_id.blank?
@@ -101,7 +101,7 @@ module Api
 
       # POST /api/v1/portfolios/:public_id/fitgap
       def fitgap
-        portfolio = Portfolio.find_by_public_id!(params[:public_id]) # rubocop:disable Rails/DynamicFindBy
+        portfolio = Portfolio.find_by_public_id!(params[:public_id])
 
         vacancy_id = params.dig(:fitgap, :vacancy_id) || params[:vacancy_id]
         return json_error("vacancy_id is required", :unprocessable_entity) if vacancy_id.blank?
@@ -127,7 +127,7 @@ module Api
 
       # GET /api/v1/portfolios/:public_id/fitgap/:vacancy_id
       def show_fitgap
-        portfolio = Portfolio.find_by_public_id!(params[:public_id]) # rubocop:disable Rails/DynamicFindBy
+        portfolio = Portfolio.find_by_public_id!(params[:public_id])
         report    = FitGapReport.find_by(portfolio_id: portfolio.id, vacancy_id: params[:vacancy_id])
 
         if report.nil?
@@ -142,7 +142,7 @@ module Api
       private
 
       def set_session
-        @session = Session.find_by_public_id!(params[:public_id]) # rubocop:disable Rails/DynamicFindBy
+        @session = Session.find_by_public_id!(params[:public_id])
       rescue ActiveRecord::RecordNotFound
         json_error("Session not found", :not_found)
       end
@@ -153,7 +153,7 @@ module Api
         if @session
           @portfolio = @session.portfolio
         else
-          @portfolio = Portfolio.find_by_public_id!(params[:public_id]) # rubocop:disable Rails/DynamicFindBy
+          @portfolio = Portfolio.find_by_public_id!(params[:public_id])
         end
       rescue ActiveRecord::RecordNotFound
         json_error("Portfolio not found", :not_found)
@@ -202,13 +202,13 @@ module Api
 
       def fit_gap_json(report)
         {
-          id:                report.id,
-          portfolio_id:      report.portfolio_id,
-          vacancy_id:        report.vacancy_id,
-          skill_comparisons: report.skill_comparisons,
-          culture_narrative: report.culture_narrative,
-          overall_narrative: report.overall_narrative,
-          generated_at:      report.generated_at
+          id:                   report.id,
+          portfolio_public_id:  report.portfolio.public_id,
+          vacancy_public_id:    report.vacancy.public_id,
+          skill_comparisons:    report.skill_comparisons,
+          culture_narrative:    report.culture_narrative,
+          overall_narrative:    report.overall_narrative,
+          generated_at:         report.generated_at
         }
       end
 

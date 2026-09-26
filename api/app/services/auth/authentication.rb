@@ -10,8 +10,12 @@ module Auth
   class Authentication
     Result = Struct.new(:success?, :user, :error, keyword_init: true)
 
+    def self.call(email:, password:)
+      new(email: email, password: password).call
+    end
+
     def initialize(email:, password:)
-      @email    = email.to_s.downcase
+      @email    = email.to_s.strip.downcase
       @password = password.to_s
     end
 

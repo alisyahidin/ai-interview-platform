@@ -16,7 +16,7 @@ module Api
       # GET /api/v1/assessments/:assessment_public_id/sessions
       def index
         assessment = Assessment.find_by_public_id!(params[:assessment_public_id])
-        sessions = assessment.sessions.order(created_at: :desc)
+        sessions = assessment.sessions.includes(:assessment).order(created_at: :desc)
 
         json_response(sessions: sessions.map(&method(:session_json)))
       rescue ActiveRecord::RecordNotFound
@@ -217,7 +217,7 @@ module Api
       private
 
       def set_session
-        @session = Session.find_by_public_id!(params[:public_id]) # rubocop:disable Rails/DynamicFindBy
+        @session = Session.find_by_public_id!(params[:public_id])
       rescue ActiveRecord::RecordNotFound
         json_error("Session not found", :not_found)
       end
@@ -235,20 +235,20 @@ module Api
 
       def session_json(session)
         {
-          public_id:        session.public_id,
-          assessment_id:    session.assessment_id,
-          tenant_id:        session.tenant_id,
-          candidate_id:     session.candidate_id,
-          candidate_name:   session.candidate_name,
-          invite_token:     session.invite_token,
-          invite_url:       session.invite_url,
-          status:           session.status,
-          end_reason:       session.end_reason,
-          started_at:       session.started_at,
-          ended_at:         session.ended_at,
-          duration_seconds: session.duration_seconds,
-          created_at:       session.created_at,
-          consent_given_at: session.consent_given_at,
+          public_id:                          session.public_id,
+          assessment_public_id:               session.assessment.public_id,
+          tenant_id:                          session.tenant_id,
+          candidate_id:                       session.candidate_id,
+          candidate_name:                     session.candidate_name,
+          invite_token:                       session.invite_token,
+          invite_url:                         session.invite_url,
+          status:                             session.status,
+          end_reason:                         session.end_reason,
+          started_at:                         session.started_at,
+          ended_at:                           session.ended_at,
+          duration_seconds:                   session.duration_seconds,
+          created_at:                         session.created_at,
+          consent_given_at:                   session.consent_given_at,
           connectivity_advisory_acknowledged: session.connectivity_advisory_acknowledged
         }
       end

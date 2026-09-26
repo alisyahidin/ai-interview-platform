@@ -2,8 +2,8 @@
   "data": {
     "report": {
       "id": 1,
-      "portfolio_id": 1,
-      "vacancy_id": 1,
+      "portfolio_public_id": "00000000-0000-0000-0000-000000000001",
+      "vacancy_public_id": "00000000-0000-0000-0000-000000000001",
       "skill_comparisons": [
         {
           "skill_label": "Ruby on Rails",
