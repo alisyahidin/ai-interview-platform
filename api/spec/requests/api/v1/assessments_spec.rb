@@ -208,10 +208,11 @@ RSpec.describe "Api::V1::Assessments", type: :request do
       end
     end
 
-    describe "GET /api/v1/sessions/:id (nested assessment sub-object)" do
+    describe "GET /api/v1/sessions/:public_id (nested assessment sub-object)" do
       let(:session) { create(:session, tenant_id: tenant.id, assessment: assessment) }
 
-      before { get "/api/v1/sessions/#{session.id}", headers: headers }
+      # #41: sessions are now addressed by public_id, not the sequential id.
+      before { get "/api/v1/sessions/#{session.public_id}", headers: headers }
 
       it "keys the embedded assessment on public_id" do
         expect(response.parsed_body["session"]["assessment"]["public_id"]).to eq(assessment.public_id)
