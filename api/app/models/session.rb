@@ -2,6 +2,7 @@
 
 class Session < ApplicationRecord
   include TenantScoped
+  include HasPublicId
 
   STATUSES   = %w[pending active ended failed].freeze
   END_REASONS = %w[manual_candidate manual_assessor all_covered time_ceiling error].freeze
