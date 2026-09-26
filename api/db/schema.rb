@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_09_26_000000) do
+ActiveRecord::Schema[7.0].define(version: 2026_09_26_020000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pgcrypto"
   enable_extension "plpgsql"
@@ -95,6 +95,17 @@ ActiveRecord::Schema[7.0].define(version: 2026_09_26_000000) do
     t.index ["portfolio_id", "vacancy_id"], name: "index_fit_gap_reports_on_portfolio_id_and_vacancy_id", unique: true
     t.index ["portfolio_id"], name: "index_fit_gap_reports_on_portfolio_id"
     t.index ["vacancy_id"], name: "index_fit_gap_reports_on_vacancy_id"
+  end
+
+  create_table "organization_invitations", force: :cascade do |t|
+    t.bigint "organization_id", null: false
+    t.string "token", null: false
+    t.datetime "expires_at", null: false
+    t.datetime "used_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["organization_id"], name: "index_organization_invitations_on_organization_id"
+    t.index ["token"], name: "index_organization_invitations_on_token", unique: true
   end
 
   create_table "organizations", force: :cascade do |t|
@@ -194,7 +205,9 @@ ActiveRecord::Schema[7.0].define(version: 2026_09_26_000000) do
     t.string "role", limit: 20, default: "user", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "organization_id"
     t.index ["email"], name: "idx_ai_interview_users_email", unique: true
+    t.index ["organization_id"], name: "index_users_on_organization_id"
   end
 
   create_table "vacancies", force: :cascade do |t|

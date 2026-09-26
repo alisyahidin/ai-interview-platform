@@ -18,4 +18,37 @@ RSpec.describe User, type: :model do
   it "rejects an invalid role" do
     expect(build(:user, role: "superadmin")).not_to be_valid
   end
+
+  # Phase 5 / #36: organization_id is a plain, application-validated
+  # attribute (no belongs_to / DB FK -- see User#organization), required
+  # going forward even though the underlying column is nullable at the DB
+  # level.
+  describe "organization_id" do
+    it "is invalid without an organization_id" do
+      expect(build(:user, organization_id: nil)).not_to be_valid
+    end
+
+    it "reports the presence error on organization_id" do
+      user = build(:user, organization_id: nil)
+      user.valid?
+
+      expect(user.errors[:organization_id]).to be_present
+    end
+
+    it "is valid with an organization_id" do
+      expect(build(:user, organization_id: 1)).to be_valid
+    end
+
+    it "exposes the referenced Organization via #organization" do
+      org = Organization.create!(name: "o", scheme: "o-#{SecureRandom.hex(4)}", identifier: "o", host: "o.example.com")
+
+      expect(build(:user, organization_id: org.id).organization).to eq(org)
+    end
+
+    it "returns nil from #organization when no organization matches" do
+      user = build(:user, organization_id: -1)
+
+      expect(user.organization).to be_nil
+    end
+  end
 end
