@@ -12,6 +12,7 @@ export interface Assessment {
     id: number;
     status: "pending" | "active" | "ended";
     end_reason?: string | null;
+    connectivity_advisory_acknowledged?: string | null;
   };
 }
 
