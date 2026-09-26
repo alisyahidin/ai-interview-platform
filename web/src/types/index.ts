@@ -9,8 +9,10 @@ export interface Assessment {
   updated_at?: string;
   skills?: AssessmentSkill[];
   latest_session?: {
+    id: number;
     status: "pending" | "active" | "ended";
     end_reason?: string | null;
+    connectivity_advisory_acknowledged?: string | null;
   };
 }
 

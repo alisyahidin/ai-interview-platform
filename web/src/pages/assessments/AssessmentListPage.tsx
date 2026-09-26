@@ -10,21 +10,37 @@ import type { Assessment } from "@/types";
 function SessionSummary({ session }: { session?: Assessment["latest_session"] }) {
   if (!session) return null;
 
-  if (session.status === "active")
-    return (
-      <span className="flex items-center gap-1 text-xs text-primary">
-        <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-        Live now
-      </span>
-    );
+  const statusText = (() => {
+    if (session.status === "active")
+      return (
+        <span className="flex items-center gap-1 text-xs text-primary">
+          <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+          Live now
+        </span>
+      );
 
-  if (session.status === "ended" && session.end_reason === "error")
-    return <span className="text-xs text-destructive">Last: failed</span>;
+    if (session.status === "ended" && session.end_reason === "error")
+      return <span className="text-xs text-destructive">Last: failed</span>;
 
-  if (session.status === "ended")
-    return <span className="text-xs text-muted-foreground">Last: completed</span>;
+    if (session.status === "ended")
+      return <span className="text-xs text-muted-foreground">Last: completed</span>;
 
-  return <span className="text-xs text-muted-foreground">Awaiting candidate</span>;
+    return <span className="text-xs text-muted-foreground">Awaiting candidate</span>;
+  })();
+
+  // #27's implementation decision: a session the candidate chose to continue
+  // on a weak connection surfaces a small inline note here, regardless of
+  // whether it ultimately succeeded, failed, or is still active/pending.
+  return (
+    <span className="flex items-center gap-1.5">
+      {statusText}
+      {session.connectivity_advisory_acknowledged && (
+        <span className="text-xs text-amber-600">
+          ⚠ Candidate continued on a weak connection
+        </span>
+      )}
+    </span>
+  );
 }
 
 export default function AssessmentListPage() {
