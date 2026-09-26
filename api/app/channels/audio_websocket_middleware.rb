@@ -744,10 +744,12 @@ class AudioWebSocketMiddleware
 
         token = auth_header.split(' ').last
         payload = JsonWebToken.decode(token)
-        tenant_id = Organization.find_by(scheme: payload[:scheme])&.id
-        return [nil, 'Invalid tenant'] unless tenant_id
+        # Tenant comes from the token's user, not a (now-removed) `scheme`
+        # claim — matches the request-time derivation in AuthorizeApiRequest.
+        user = User.find_by(id: payload[:user_id])
+        return [nil, 'Invalid tenant'] unless user&.organization_id
 
-        Session.unscoped.where(tenant_id: tenant_id).find_by(id: session_id)
+        Session.unscoped.where(tenant_id: user.organization_id).find_by(id: session_id)
       end
     rescue StandardError => e
       return [nil, "Authentication failed: #{e.message}"]

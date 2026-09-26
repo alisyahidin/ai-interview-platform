@@ -2,6 +2,7 @@
 
 class Portfolio < ApplicationRecord
   include TenantScoped
+  include HasPublicId
 
   GENERATION_STATUSES = %w[pending generating complete failed].freeze
 

@@ -6,10 +6,19 @@
 #   Current.organization  → the Organization AR record
 #   Current.tenant_id     → organization.id (used to scope all AI interview queries)
 #
-# Resolution order:
-#   1. JWT Bearer token → decode → use `scheme` claim
-#   2. X-Tenant-Scheme request header (for non-JWT requests / candidate flows)
-#   3. Referer host (fallback, same as rakamin-api HostService approach)
+# Superseded for JWT-authenticated routes: as of Phase 5 #3, tenant for those
+# requests is derived from the freshly-loaded User record's `organization_id`
+# in ApplicationController#authenticate_with_roles! (see there), which runs
+# after this middleware and overwrites whatever it sets. There is no longer a
+# `scheme` JWT claim to decode — a bearer token no longer resolves a tenant
+# here at all.
+#
+# What's left is only used by requests that never hit `authorize_auth_token!`
+# (e.g. the candidate invite-token flow doesn't use Current.organization at
+# all — it scopes explicitly by the session's own tenant_id instead), plus
+# whatever still relies on the header/Referer fallback:
+#   1. X-Tenant-Scheme request header
+#   2. Referer host (fallback, same as rakamin-api HostService approach)
 #
 # If no tenant can be resolved, the request continues with no tenant set.
 # Individual controllers can enforce tenant presence via before_action.
@@ -31,23 +40,8 @@ class TenantResolverMiddleware < ApplicationMiddleware
   private
 
   def resolve_scheme(request)
-    # 1. Try JWT bearer token first
-    scheme_from_jwt(request) ||
-      # 2. Try explicit header
-      request.headers['X-Tenant-Scheme'].presence ||
-      # 3. Fall back to referer host
+    request.headers['X-Tenant-Scheme'].presence ||
       scheme_from_referer(request)
-  end
-
-  def scheme_from_jwt(request)
-    auth_header = request.headers['Authorization'].to_s
-    return unless auth_header.start_with?('Bearer ', 'bearer ')
-
-    token = auth_header.split(' ').last
-    claims = JsonWebToken.decode_without_verification(token)
-    claims[:scheme].presence
-  rescue StandardError
-    nil
   end
 
   def scheme_from_referer(request)

@@ -1,41 +1,48 @@
 # frozen_string_literal: true
 
-require 'ostruct'
-
 # Extracted and simplified from rakamin-api.
 # Bearer token only (no basic auth — AI interview has no whitelist-key consumers).
-# Returns { user_id:, role:, scheme: } from the decoded JWT.
-# Does NOT hit the database for user lookup — trusts the JWT claims.
+#
+# Re-fetches the User record from the JWT's `user_id` claim on every request,
+# rather than trusting the token's own claims. This is what makes a
+# since-deleted user's previously-issued token stop working immediately, and
+# it's why `role` (and tenant, derived from `organization_id` by the caller)
+# are always read fresh from the database instead of from a claim that could
+# be stale.
 class AuthorizeApiRequest
   # Roles that map to "assessor" permission in the AI interview context.
-  # rakamin-api uses 'admin'; 'assessor' is planned as a future role.
-  ASSESSOR_ROLES = %w[admin assessor].freeze
+  # The real, persisted User#role enum is %w[admin user] (see User::ROLES) --
+  # "assessor" is prose from the strategy doc describing the role, never a
+  # value actually stored in the database.
+  ASSESSOR_ROLES = %w[admin user].freeze
 
   def initialize(headers = {}, required_roles = [])
     @headers = headers
     @required_roles = Array(required_roles)
   end
 
-  # Returns an OpenStruct with :id, :role, :scheme
+  # Returns { user: } where `user` is the freshly-loaded User record.
+  # Raises ExceptionHandler::InvalidToken (401) when the token is malformed,
+  # expired, or names a user that no longer exists.
   def call
-    claims = decoded_auth_token
-    user_struct = build_user_struct(claims)
+    user = load_user!
 
-    check_role!(user_struct) if @required_roles.any?
+    check_role!(user) if @required_roles.any?
 
-    { user: user_struct, claims: }
+    { user: user }
   end
 
   private
 
   attr_reader :headers
 
-  def build_user_struct(claims)
-    OpenStruct.new(
-      id:     claims[:user_id],
-      role:   claims[:role].to_s,
-      scheme: claims[:scheme].to_s
-    )
+  def load_user!
+    claims = decoded_auth_token
+    user = User.find_by(id: claims[:user_id])
+
+    raise(ExceptionHandler::InvalidToken, Message.invalid_token) unless user
+
+    user
   end
 
   def check_role!(user)

@@ -6,26 +6,40 @@ module Api
       skip_before_action :require_tenant!
 
       # POST /api/v1/auth/login
+      #
+      # Both `admin` and `user` roles may authenticate here -- see
+      # Auth::Authentication. The role/permission distinction is enforced at
+      # each controller's `authorize_auth_token!` call site, not at login.
       def authenticate
-        user = User.find_by(email: params[:email].to_s.downcase)
+        result = Auth::Authentication.new(email: params[:email], password: params[:password]).call
 
-        return json_error('Invalid email or password', :unauthorized) unless user&.authenticate(params[:password])
+        return json_error(result.error, :unauthorized) unless result.success?
 
-        return json_error('Invalid email or password', :unauthorized) unless user.role == 'admin'
+        user  = result.user
+        token = JsonWebToken.encode({ user_id: user.id })
 
-        scheme = resolve_scheme
-        token  = JsonWebToken.encode({ user_id: user.id, role: user.role, scheme: })
-
-        json_response({ token:, user: { id: user.id, email: user.email, role: user.role } })
+        json_response({ token:, user: { id: user.id, email: user.email, role: user.role, organization_id: user.organization_id } })
       end
 
-      private
+      # POST /api/v1/auth/register
+      #
+      # #38: creates an account from an invitation token. Does not log the
+      # new user in -- on success the frontend sends them to the login page
+      # separately, matching the login page's "who this is for" framing
+      # rather than blurring registration and login into one endpoint.
+      #
+      # Any `role` the caller submits is ignored entirely -- see
+      # Auth::Registration, which never reads it.
+      def register
+        result = Auth::Registration.call(
+          email:            params[:email],
+          password:         params[:password],
+          invitation_token: params[:invitation_token]
+        )
 
-      def resolve_scheme
-        request.headers['X-Tenant-Scheme'].presence ||
-          ActiveRecord::Base.connection.select_value(
-            'SELECT scheme FROM organizations LIMIT 1'
-          ) || 'test-corp'
+        return json_error(result.error, :unprocessable_entity) unless result.success?
+
+        json_response({ message: 'Registration successful. You can now log in.' }, :created)
       end
     end
   end

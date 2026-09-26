@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useSetAtom } from "jotai";
 import { authAtom, saveToken } from "@/stores/authAtom";
 import { authApi } from "@/services/auth";
@@ -10,6 +10,10 @@ import { Loader2 } from "lucide-react";
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  // #42: SignupPage sends this signal on successful registration so the
+  // login page can confirm the account was actually created.
+  const justRegistered = Boolean((location.state as { justRegistered?: boolean } | null)?.justRegistered);
   const setAuth = useSetAtom(authAtom);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -40,6 +44,12 @@ export default function LoginPage() {
           <h1 className="text-2xl font-bold">AI Interview</h1>
           <p className="text-sm text-muted-foreground mt-1">Sign in to your account</p>
         </div>
+
+        {justRegistered && (
+          <p className="text-sm text-center text-emerald-600 bg-emerald-50 rounded-md py-2 px-3">
+            Account created. Please sign in.
+          </p>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">

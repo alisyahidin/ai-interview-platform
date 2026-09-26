@@ -1,14 +1,15 @@
 # frozen_string_literal: true
 
 # Request-spec helper for building a real, end-to-end authenticated request:
-# a genuine Organization row plus a JWT whose `scheme` claim resolves to it.
+# a genuine Organization row, a genuine User row scoped to it, and a JWT
+# carrying only that user's id.
 #
-# TenantResolverMiddleware decodes the JWT's `scheme` claim to set
-# Current.organization / Current.tenant_id for the request; AuthorizeApiRequest
-# separately checks the JWT's `role` claim against the controller's required
-# roles. Building both for real (rather than poking Current.tenant_id
-# directly) exercises the actual resolution path tenant-isolation specs are
-# meant to prove.
+# Phase 5 #3: tenant and role are no longer asserted by the JWT (there's no
+# `scheme`/`role` claim to trust) -- AuthorizeApiRequest re-fetches the User
+# from `user_id` on every request, and ApplicationController derives tenant
+# from that user's own `organization_id`. Building a real User (rather than
+# poking Current.tenant_id/Current.user directly) exercises the actual
+# resolution path tenant-isolation specs are meant to prove.
 module AuthHelpers
   def create_tenant(scheme: "tenant-#{SecureRandom.hex(6)}")
     Organization.create!(
@@ -19,8 +20,16 @@ module AuthHelpers
     )
   end
 
-  def auth_headers_for(organization, role: "assessor", user_id: 1)
-    token = JsonWebToken.encode(user_id: user_id, role: role, scheme: organization.scheme)
+  def create_auth_user(organization, role: "user", email: nil)
+    create(:user,
+           email:           email || "user-#{SecureRandom.hex(6)}@example.com",
+           role:            role,
+           organization_id: organization.id)
+  end
+
+  def auth_headers_for(organization, role: "user", user: nil)
+    user ||= create_auth_user(organization, role: role)
+    token = JsonWebToken.encode(user_id: user.id)
     { "Authorization" => "Bearer #{token}" }
   end
 end
